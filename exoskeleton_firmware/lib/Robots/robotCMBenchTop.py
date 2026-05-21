@@ -1,6 +1,5 @@
 import pyb                                          # type: ignore
 import json
-import math
 
 # from lib.Hardware.imu_streamer import ImuStreamer
 from lib.Hardware.servoMotorCM import ServoCM
@@ -33,6 +32,7 @@ class CMBenchTop(Robot):
 
         self.KNEE_JOINT_ENC_COEF = 360 / 2**12
         self.TORQUE_CONSTANT_LARGE_MOTOR = 0.13 # [Nm/A] from AKE60-*-KV80 quasi direct sheet
+        self.KE_LARGE_MOTOR = 12.5 * 60e-3     # [V/(rev/s)], from Ke=12.5 V/krpm datasheet
 
         self.K =0.0
         self.B =0.0
@@ -61,6 +61,8 @@ class CMBenchTop(Robot):
         return self.servo.position_commanded * self.KNEE_JOINT_ENC_COEF
     def get_position_incr_encoder(self):
         return  self.pos_incr_encoder + self.offset_incr_encoder
+    def get_backemf(self):
+        return self.KE_LARGE_MOTOR * self.servo.velocity
     def get_torque_des(self):
         return self.servo.torque_commanded
     def get_torque_act(self):
@@ -90,6 +92,7 @@ class CMBenchTop(Robot):
         # current and temperature
         out[new_index +4] = self.get_current()
         out[new_index +5] = self.get_tempetature()
+        out[new_index + 6] = self.get_backemf()
         return index + self.rep_robot_msg_dim
 
     #### INITIALIZE FUNCTIONS

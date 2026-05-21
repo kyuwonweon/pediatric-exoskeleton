@@ -6,7 +6,7 @@ import time
 import rclpy
 from rclpy.node import Node
 import numpy as np
-from std_msgs.msg import Float64MultiArray
+from std_msgs.msg import Float64MultiArray, Float64
 
 # host address is the computer address
 # port is dependent by which robot is transmitting
@@ -28,6 +28,7 @@ class udp2ROS(Node):
 
         self.pub_robot = self.create_publisher(Float64MultiArray, f'robot_state_{robot}', 10)
         self.pub_ctrl = self.create_publisher(Float64MultiArray, f'ctrl_state_{robot}', 10)
+        self.pub_backemf = self.create_publisher(Float64, f'backemf_{robot}', 10)
 
         # define socket interfaces
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -116,8 +117,11 @@ class udp2ROS(Node):
                     msg_ros_robot.data = msg_robot
                     msg_ros_ctrl = Float64MultiArray()
                     msg_ros_ctrl.data = msg_ctrl
+                    bemf = Float64()
+                    bemf.data = float(msg_robot[self.dim_reporter_msg + 9]) # robot slot 9 = back-EMF (Kt*omega)
                     self.pub_robot.publish(msg_ros_robot)
                     self.pub_ctrl.publish(msg_ros_ctrl)
+                    self.pub_backemf.publish(bemf)
                     self.new_msg_flag =  False
 
                     # --- Metrics ---

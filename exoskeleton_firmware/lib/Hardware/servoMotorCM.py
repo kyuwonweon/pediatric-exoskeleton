@@ -284,3 +284,6 @@ class ServoCM(ServoInterface): # servo constructor/decorator
         # if self.counter_for_temp==300:
         #     self.temperature = self._servo.channel_poci.motor_temperature_value
         #     self.counter_for_temp =0
+
+    def _update_actual_torque(self):
+        self.tau_Actual = self._servo.channel_poci.actual_torque
