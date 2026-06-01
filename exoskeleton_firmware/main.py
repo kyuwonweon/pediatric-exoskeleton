@@ -51,6 +51,7 @@ reporter = ReporterWifiUDP(ctrlFact, _PARAM_FILE, reporter_ip)
 reporter.enable_reporter()
 
 robot.enable(True)
+robot.set_backemf_feedforward(True)   # remove this line to test WITHOUT feedforward
 
 
 

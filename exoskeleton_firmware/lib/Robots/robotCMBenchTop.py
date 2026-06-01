@@ -31,8 +31,13 @@ class CMBenchTop(Robot):
         self.Kpt = 0.0
 
         self.KNEE_JOINT_ENC_COEF = 360 / 2**12
-        self.TORQUE_CONSTANT_LARGE_MOTOR = 0.13 # [Nm/A] from AKE60-*-KV80 quasi direct sheet
-        self.KE_LARGE_MOTOR = 12.5 * 60e-3     # [V/(rev/s)], from Ke=12.5 V/krpm datasheet
+        self.TORQUE_CONSTANT_LARGE_MOTOR = 0.13  # Nm/A
+        self.KE_LARGE_MOTOR = 0.75    # V/(rev/s), from Ke=12.5 V/krpm
+        self.MOTOR_RESISTANCE = 0.577             # Ohm
+        # Precomputed feedforward gain: tau_ff = BACKEMF_FF_GAIN * velocity [Nm / (rev/s)]
+        # Derivation: I_ff = Ke*omega / R,  tau_ff = Kt * I_ff = (Kt*Ke/R) * omega
+        self.BACKEMF_FF_GAIN = (self.TORQUE_CONSTANT_LARGE_MOTOR * self.KE_LARGE_MOTOR
+                                / self.MOTOR_RESISTANCE) if self.MOTOR_RESISTANCE > 0 else 0.0
 
         self.K =0.0
         self.B =0.0
@@ -45,6 +50,8 @@ class CMBenchTop(Robot):
         self.transmission = 8
 
         self.reference_position = 0.0
+        self._backemf_ff_enabled = False
+        self._tau_backemf_ff = 0.0
 
         # servo
         current_limit = self.params["servo"]["CURRENT_LIMIT"]  # TODO: move in servo
@@ -85,10 +92,10 @@ class CMBenchTop(Robot):
         # 3 - loadcell Fz
         # 4 - loadcell My
         # 5 - thigh positionll
-        out[new_index]= 0.0
-        out[new_index + 1] = 0.0
+        out[new_index]     = self.get_torque_des()           # torque loop commanded
+        out[new_index + 1] = self.get_torque_act()           # actual torque from drive
         out[new_index + 2] = self.get_position_incr_encoder()
-        out[new_index + 3] = 0.0
+        out[new_index + 3] = self._tau_backemf_ff            # feedforward contribution
         # current and temperature
         out[new_index +4] = self.get_current()
         out[new_index +5] = self.get_tempetature()
@@ -138,7 +145,7 @@ class CMBenchTop(Robot):
             position = min(position, self.position_limits[1])
 
             # position should be in degs
-            position=  int(position / self.KNEE_JOINT_ENC_COEF)
+            position = int(position / self.KNEE_JOINT_ENC_COEF)
             self.servo.set_pos_loop_set_point(position)
         else:
             print("The current profiler doesn't support this method!")
@@ -166,7 +173,10 @@ class CMBenchTop(Robot):
 
 
     def set_tau_offset(self, tau=0.0):
-        self.servo.set_tau_offset(tau)
+        self.servo.set_tau_offset(tau + self._tau_backemf_ff)
+
+    def set_backemf_feedforward(self, enabled: bool):
+        self._backemf_ff_enabled = enabled
 
     def set_KD_parameter(self, K: float, B: float) -> None:
         """
@@ -230,6 +240,12 @@ class CMBenchTop(Robot):
         self.servo.set_Kpt(self.Kpt)
 
 
+    def _compute_backemf_feedforward(self):
+        if self._backemf_ff_enabled and self.BACKEMF_FF_GAIN > 0.0:
+            self._tau_backemf_ff = self.BACKEMF_FF_GAIN * self.servo.velocity  # [Nm] at motor shaft
+        else:
+            self._tau_backemf_ff = 0.0
+
     def _update_callback(self, timer_object):
         if self.run:
             # update kin
@@ -238,6 +254,7 @@ class CMBenchTop(Robot):
             self._update_acceleration()
             self._compute_transmission()
             self._update_K()
+            self._compute_backemf_feedforward()
 
 
 

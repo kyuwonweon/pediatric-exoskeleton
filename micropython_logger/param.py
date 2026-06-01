@@ -13,7 +13,7 @@ CONTROLLER_CONFIGS = {
             "K_stiffness": 3, "B_damping": 4, "dt": 5
         }
     },
-    
+
     "SMWalking": {
         "params": {
             "enable_controller": False,

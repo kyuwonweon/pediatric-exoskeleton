@@ -213,7 +213,6 @@ class ServoCM(ServoInterface): # servo constructor/decorator
             ]
 
         self._init_everest()
-
         ### init timer
         self._init_timer()
 
@@ -286,4 +285,4 @@ class ServoCM(ServoInterface): # servo constructor/decorator
         #     self.counter_for_temp =0
 
     def _update_actual_torque(self):
-        self.tau_Actual = self._servo.channel_poci.actual_torque
+        self.tau_actual = self._servo.channel_poci.actual_torque
