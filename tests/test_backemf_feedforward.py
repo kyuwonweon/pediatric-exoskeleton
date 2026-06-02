@@ -42,7 +42,7 @@ _PARAMS = {
         "K_initial": 1.0, "B_initial": 0.1,
         "K_bounds": [0.0, 3.0], "B_bounds": [0.0, 0.5],
     },
-    "reporter":      {"dim_robot_msg": 10},
+    "reporter":      {"dim_robot_msg": 11},
     "input_manager": {"dim_robot_cmd": 4},
     "servo":         {"CURRENT_LIMIT": 1.0},
 }
@@ -152,15 +152,16 @@ class TestFeedforwardUpdate(unittest.TestCase):
         self.robot._compute_backemf_feedforward()
         self.assertEqual(self.robot._tau_backemf_ff, 0.0)
 
-    def test_no_servo_write_during_feedforward_compute(self):
-        """_compute_backemf_feedforward must NOT write to the servo — only store the value."""
+    def test_feedforward_compute_writes_to_servo(self):
+        """_compute_backemf_feedforward must write _tau_commanded to the servo every tick."""
         self.robot.set_backemf_feedforward(True)
         self.robot.servo.velocity = 5.0
         self.robot.servo.reset_mock()
 
         self.robot._compute_backemf_feedforward()
+        expected = self.robot._tau_backemf_ff  # _tau_external is 0 at init
 
-        self.robot.servo.set_tau_offset.assert_not_called()
+        self.robot.servo.set_tau_offset.assert_called_once_with(expected)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -169,9 +170,10 @@ class TestNoOverwrite(unittest.TestCase):
     The original concern: TIMER_ROBOT (200 Hz) and TIMER_CONTROLLER (50 Hz) both
     wrote to TORQUE_LOOP_INPUT_OFFSET, stomping each other.
 
-    Fix: _compute_backemf_feedforward() only updates _tau_backemf_ff.
-         set_tau_offset(tau) always sends tau + _tau_backemf_ff.
-    So both are present in every servo write, regardless of which timer fired.
+    Fix: _compute_backemf_feedforward() owns the servo write every robot tick,
+         sending _tau_external + _tau_backemf_ff together.
+         set_tau_offset(tau) only stores _tau_external — no direct servo write.
+    So both contributions are always present in every servo write.
     """
 
     R = 0.185
@@ -180,33 +182,36 @@ class TestNoOverwrite(unittest.TestCase):
         self.robot = _make_robot(motor_resistance=self.R)
 
     def test_set_tau_offset_merges_both(self):
-        """Controller tau and feedforward tau both appear in the servo write."""
+        """Controller tau and feedforward tau both appear in the servo write on the next robot tick."""
         tau_ctrl = 1.5   # Nm from controller
         velocity  = 4.0  # rev/s
 
         self.robot.set_backemf_feedforward(True)
         self.robot.servo.velocity = velocity
 
-        # robot timer tick
+        # first robot tick: writes 0 + tau_ff (tau_external still 0)
         self.robot._compute_backemf_feedforward()
         tau_ff = self.robot._tau_backemf_ff
 
-        # controller timer tick
+        # controller tick: stores tau_ctrl, no servo write
         self.robot.set_tau_offset(tau_ctrl)
+
+        # next robot tick: writes tau_ctrl + tau_ff
+        self.robot._compute_backemf_feedforward()
 
         self.robot.servo.set_tau_offset.assert_called_with(tau_ctrl + tau_ff)
 
     def test_feedforward_off_passes_only_ctrl_tau(self):
-        """With feedforward disabled the servo receives exactly tau_ctrl."""
+        """With feedforward disabled the servo receives exactly tau_ctrl on the next robot tick."""
         tau_ctrl = 2.0
-        self.robot._compute_backemf_feedforward()   # disabled → _tau_backemf_ff = 0
-        self.robot.set_tau_offset(tau_ctrl)
+        self.robot.set_tau_offset(tau_ctrl)           # stores tau_external, no servo write
+        self.robot._compute_backemf_feedforward()     # disabled → tau_ff=0, writes tau_ctrl
         self.robot.servo.set_tau_offset.assert_called_with(tau_ctrl)
 
     def test_timer_sequence_does_not_clobber(self):
         """
-        Simulate 4 robot ticks then 1 controller tick (the real 200/50 Hz ratio).
-        After the controller tick the servo write must contain both tau values.
+        4 robot ticks, 1 controller tick, then 1 more robot tick (200/50 Hz ratio).
+        The final servo write must contain both tau_ctrl and tau_ff.
         """
         tau_ctrl = 0.8
         velocity  = 6.0
@@ -214,17 +219,19 @@ class TestNoOverwrite(unittest.TestCase):
         self.robot.set_backemf_feedforward(True)
         self.robot.servo.velocity = velocity
 
-        # 4 robot timer ticks (updating _tau_backemf_ff, no servo write)
+        # 4 robot ticks — each writes (0 + tau_ff) since tau_external=0
         for _ in range(4):
             self.robot._compute_backemf_feedforward()
 
-        tau_ff = self.robot._tau_backemf_ff   # should be BACKEMF_FF_GAIN * 6.0
+        tau_ff = self.robot._tau_backemf_ff   # BACKEMF_FF_GAIN * 6.0
 
-        # 1 controller timer tick
+        # controller tick: stores tau_ctrl, no servo write
         self.robot.set_tau_offset(tau_ctrl)
 
-        # servo was written exactly once, with both contributions
-        self.robot.servo.set_tau_offset.assert_called_once_with(tau_ctrl + tau_ff)
+        # next robot tick: writes tau_ctrl + tau_ff
+        self.robot._compute_backemf_feedforward()
+
+        self.robot.servo.set_tau_offset.assert_called_with(tau_ctrl + tau_ff)
 
     def test_tau_ff_changes_with_velocity(self):
         """_tau_backemf_ff tracks velocity — higher speed → larger feedforward."""
@@ -239,6 +246,116 @@ class TestNoOverwrite(unittest.TestCase):
         tau_high = self.robot._tau_backemf_ff
 
         self.assertGreater(tau_high, tau_low)
+
+
+import math as _math
+
+
+def _pearson_r(xs, ys):
+    n = len(xs)
+    if n < 2:
+        return 0.0
+    mx = sum(xs) / n
+    my = sum(ys) / n
+    num = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    den = (_math.sqrt(sum((x - mx) ** 2 for x in xs)) *
+           _math.sqrt(sum((y - my) ** 2 for y in ys)))
+    return num / den if den > 0 else 0.0
+
+
+def _bin_by_speed(velocities, values, n_bins):
+    """Bucket (|velocity|, |value|) into n equal-width speed bins, return (mean_speed, mean_val) per bin."""
+    max_speed = max(abs(v) for v in velocities)
+    width = max_speed / n_bins
+    buckets = [[] for _ in range(n_bins)]
+    for v, val in zip(velocities, values):
+        idx = min(int(abs(v) / width), n_bins - 1)
+        buckets[idx].append((abs(v), abs(val)))
+    return [
+        (sum(p[0] for p in b) / len(b), sum(p[1] for p in b) / len(b))
+        for b in buckets if b
+    ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+class TestFeedforwardEffectiveness(unittest.TestCase):
+    """
+    Strategy 3: velocity-binned correlation analysis.
+
+    Simulates a sinusoidal velocity profile and checks:
+      1. Linear proportionality  : Pearson r(velocity, tau_ff) > 0.999
+      2. Gain consistency        : tau_ff / speed ≈ BACKEMF_FF_GAIN in every bin
+      3. Compensation magnitude  : peak tau_ff is non-negligible vs observed motor torque
+    """
+
+    R = 0.577
+    N_SAMPLES = 360
+    VEL_AMP = 0.3             # rev/s peak ≈ 108 deg/s, realistic operating speed
+    N_BINS = 6
+    GAIN_TOLERANCE = 0.005    # Nm/(rev/s) — numerical only, no physics uncertainty here
+    OBSERVED_PEAK_TORQUE_NM = 0.5   # peak actual_torque seen on hardware (motor shaft, Nm)
+    MIN_FF_SIGNIFICANCE = 0.01      # 1 % — below this FF is negligible
+
+    def setUp(self):
+        self.robot = _make_robot(motor_resistance=self.R)
+        self.robot.set_backemf_feedforward(True)
+        self.velocities = [
+            self.VEL_AMP * _math.sin(2 * _math.pi * i / self.N_SAMPLES)
+            for i in range(self.N_SAMPLES)
+        ]
+        self.tau_ff = []
+        for v in self.velocities:
+            self.robot.servo.velocity = v
+            self.robot._compute_backemf_feedforward()
+            self.tau_ff.append(self.robot._tau_backemf_ff)
+
+    def test_linear_proportionality(self):
+        """Pearson r(velocity, tau_ff) must exceed 0.999 — confirms model is linear."""
+        r = _pearson_r(self.velocities, self.tau_ff)
+        self.assertGreater(r, 0.999,
+            f"tau_ff not linearly proportional to velocity (r = {r:.4f})")
+
+    def test_binned_gain_consistency(self):
+        """In every speed bin, empirical tau_ff/speed must equal BACKEMF_FF_GAIN within tolerance."""
+        bins = _bin_by_speed(self.velocities, self.tau_ff, self.N_BINS)
+        for mean_speed, mean_tau in bins:
+            if mean_speed < 1e-4:
+                continue
+            empirical = mean_tau / mean_speed
+            self.assertAlmostEqual(
+                empirical, self.robot.BACKEMF_FF_GAIN, delta=self.GAIN_TOLERANCE,
+                msg=(f"Bin at {mean_speed:.3f} rev/s: empirical gain {empirical:.4f} "
+                     f"!= BACKEMF_FF_GAIN {self.robot.BACKEMF_FF_GAIN:.4f}"))
+
+    def test_compensation_significance(self):
+        """Peak tau_ff must be >= MIN_FF_SIGNIFICANCE of observed peak motor torque."""
+        peak_ff = max(abs(t) for t in self.tau_ff)
+        ratio = peak_ff / self.OBSERVED_PEAK_TORQUE_NM
+        self.assertGreater(ratio, self.MIN_FF_SIGNIFICANCE,
+            f"Peak FF ({peak_ff:.4f} Nm) is only {ratio*100:.1f}% of observed "
+            f"peak torque ({self.OBSERVED_PEAK_TORQUE_NM} Nm) — "
+            f"below {self.MIN_FF_SIGNIFICANCE*100:.0f}% significance threshold")
+
+    def test_print_effectiveness_summary(self):
+        """Prints velocity-binned analysis table. Always passes — read output for insight."""
+        bins = _bin_by_speed(self.velocities, self.tau_ff, self.N_BINS)
+        peak_ff = max(abs(t) for t in self.tau_ff)
+        r = _pearson_r(self.velocities, self.tau_ff)
+
+        print("\n── Back-EMF FF Effectiveness Summary ──────────────────────────")
+        print(f"  BACKEMF_FF_GAIN          : {self.robot.BACKEMF_FF_GAIN:.4f} Nm/(rev/s)")
+        print(f"  Peak velocity            : {self.VEL_AMP:.3f} rev/s  "
+              f"({self.VEL_AMP * 360:.1f} deg/s)")
+        print(f"  Peak tau_ff              : {peak_ff:.4f} Nm")
+        print(f"  As %% of obs. peak torque : {peak_ff / self.OBSERVED_PEAK_TORQUE_NM * 100:.1f}%%")
+        print(f"  Pearson r(vel, tau_ff)   : {r:.6f}")
+        print()
+        print(f"  {'Speed bin (rev/s)':>20} | {'mean |tau_ff| (Nm)':>20} | {'tau_ff/speed':>14}")
+        print("  " + "─" * 60)
+        for mean_speed, mean_tau in bins:
+            ratio = mean_tau / mean_speed if mean_speed > 1e-4 else 0.0
+            print(f"  {mean_speed:>20.4f} | {mean_tau:>20.6f} | {ratio:>14.4f}")
+        print("────────────────────────────────────────────────────────────────")
 
 
 if __name__ == '__main__':

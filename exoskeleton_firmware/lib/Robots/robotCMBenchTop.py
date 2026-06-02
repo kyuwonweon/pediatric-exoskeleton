@@ -52,6 +52,8 @@ class CMBenchTop(Robot):
         self.reference_position = 0.0
         self._backemf_ff_enabled = False
         self._tau_backemf_ff = 0.0
+        self._tau_external = 0.0
+        self._tau_commanded = 0.0
 
         # servo
         current_limit = self.params["servo"]["CURRENT_LIMIT"]  # TODO: move in servo
@@ -92,7 +94,7 @@ class CMBenchTop(Robot):
         # 3 - loadcell Fz
         # 4 - loadcell My
         # 5 - thigh positionll
-        out[new_index]     = self.get_torque_des()           # torque loop commanded
+        out[new_index]     = self._tau_commanded              # total offset commanded to drive [Nm]
         out[new_index + 1] = self.get_torque_act()           # actual torque from drive
         out[new_index + 2] = self.get_position_incr_encoder()
         out[new_index + 3] = self._tau_backemf_ff            # feedforward contribution
@@ -100,6 +102,7 @@ class CMBenchTop(Robot):
         out[new_index +4] = self.get_current()
         out[new_index +5] = self.get_tempetature()
         out[new_index + 6] = self.get_backemf()
+        out[new_index + 7] = self.get_torque_des()          # torque loop commanded by controller
         return index + self.rep_robot_msg_dim
 
     #### INITIALIZE FUNCTIONS
@@ -173,7 +176,7 @@ class CMBenchTop(Robot):
 
 
     def set_tau_offset(self, tau=0.0):
-        self.servo.set_tau_offset(tau + self._tau_backemf_ff)
+        self._tau_external = tau
 
     def set_backemf_feedforward(self, enabled: bool):
         self._backemf_ff_enabled = enabled
@@ -245,6 +248,8 @@ class CMBenchTop(Robot):
             self._tau_backemf_ff = self.BACKEMF_FF_GAIN * self.servo.velocity  # [Nm] at motor shaft
         else:
             self._tau_backemf_ff = 0.0
+        self._tau_commanded = self._tau_external + self._tau_backemf_ff
+        self.servo.set_tau_offset(self._tau_commanded)
 
     def _update_callback(self, timer_object):
         if self.run:

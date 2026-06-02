@@ -50,7 +50,7 @@ class udp2ROS(Node):
 
         # dimensions of the messages (these are defined in the json inside the board) 
         # TODO: potentially at one point copy json
-        self.dim_robot_msg = 10
+        self.dim_robot_msg = 11
         self.dim_ctrl_msg = 10
         self.dim_dec_msg = 5
         self.dim_ctrl_fact_msg =1
