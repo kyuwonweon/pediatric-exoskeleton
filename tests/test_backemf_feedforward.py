@@ -358,5 +358,144 @@ class TestFeedforwardEffectiveness(unittest.TestCase):
         print("────────────────────────────────────────────────────────────────")
 
 
+def _trapezoid(vel_peak, n_ramp, n_hold):
+    """Trapezoidal velocity profile: ramp up → hold → ramp down (all positive)."""
+    up   = [vel_peak * i / n_ramp for i in range(n_ramp)]
+    hold = [vel_peak] * n_hold
+    down = [vel_peak * (n_ramp - i) / n_ramp for i in range(n_ramp + 1)]
+    return up + hold + down
+
+
+def _rms(values):
+    return _math.sqrt(sum(v ** 2 for v in values) / len(values))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+class TestPairedVelocitySweep(unittest.TestCase):
+    """
+    Strategy 1: paired velocity sweep — FF off vs FF on, same trapezoidal profile.
+
+    Physics simulation used for both runs:
+        tau_actual = tau_impedance + tau_ff_applied - BACKEMF_FF_GAIN * |velocity|
+
+    where tau_impedance is a fixed operating-point torque (e.g. K * pos_error at
+    steady state) and tau_ff_applied is 0 (FF off) or BACKEMF_FF_GAIN * v (FF on).
+
+    Three assertions:
+      1. FF off  : torque deficit is linearly proportional to speed (r > 0.999)
+      2. FF on   : residual deficit is eliminated within numerical tolerance
+      3. Per-bin : (tau_on - tau_off) matches BACKEMF_FF_GAIN * speed in every bin
+      4. Summary : RMS torque error reduction >= 90 %
+    """
+
+    R             = 0.577
+    VEL_PEAK      = 0.3    # rev/s  (≈ 108 deg/s)
+    N_RAMP        = 60
+    N_HOLD        = 120
+    TAU_IMPEDANCE = 0.3    # Nm — representative steady-state impedance torque
+    N_BINS        = 5
+    RESIDUAL_TOL  = 1e-9   # Nm — FF on must be this close to tau_impedance
+    BIN_TOL       = 0.005  # Nm — bin-average improvement vs prediction
+    MIN_RMS_REDUCTION = 0.90   # 90 %
+
+    def setUp(self):
+        self.robot = _make_robot(motor_resistance=self.R)
+        self.velocities = _trapezoid(self.VEL_PEAK, self.N_RAMP, self.N_HOLD)
+
+    def _run(self, ff_enabled):
+        """Simulate actual_torque for every sample using the back-EMF physics model."""
+        self.robot.set_backemf_feedforward(ff_enabled)
+        actuals = []
+        for v in self.velocities:
+            self.robot.servo.velocity = v
+            self.robot._compute_backemf_feedforward()
+            deficit = self.robot.BACKEMF_FF_GAIN * abs(v)
+            actual  = self.TAU_IMPEDANCE + self.robot._tau_backemf_ff - deficit
+            actuals.append(actual)
+        return actuals
+
+    # ── test 1 ────────────────────────────────────────────────────────────────
+    def test_ff_off_deficit_scales_with_velocity(self):
+        """With FF off, torque deficit must be linearly proportional to speed (r > 0.999)."""
+        actuals_off = self._run(ff_enabled=False)
+        deficits    = [self.TAU_IMPEDANCE - a for a in actuals_off]
+        speeds      = [abs(v) for v in self.velocities]
+        r = _pearson_r(speeds, deficits)
+        self.assertGreater(r, 0.999,
+            f"Deficit does not scale linearly with speed (r = {r:.4f})")
+
+    # ── test 2 ────────────────────────────────────────────────────────────────
+    def test_ff_on_eliminates_deficit(self):
+        """With FF on, actual_torque must equal tau_impedance within RESIDUAL_TOL."""
+        actuals_on = self._run(ff_enabled=True)
+        for i, (actual, v) in enumerate(zip(actuals_on, self.velocities)):
+            residual = abs(actual - self.TAU_IMPEDANCE)
+            self.assertLess(residual, self.RESIDUAL_TOL,
+                f"Sample {i} (v={v:.3f} rev/s): residual {residual:.2e} Nm")
+
+    # ── test 3 ────────────────────────────────────────────────────────────────
+    def test_bin_improvement_matches_prediction(self):
+        """In every speed bin, (tau_on - tau_off) must equal BACKEMF_FF_GAIN * speed."""
+        actuals_off  = self._run(ff_enabled=False)
+        actuals_on   = self._run(ff_enabled=True)
+        improvements = [on - off for on, off in zip(actuals_on, actuals_off)]
+        for mean_speed, mean_imp in _bin_by_speed(self.velocities, improvements, self.N_BINS):
+            if mean_speed < 1e-4:
+                continue
+            predicted = self.robot.BACKEMF_FF_GAIN * mean_speed
+            self.assertAlmostEqual(mean_imp, predicted, delta=self.BIN_TOL,
+                msg=(f"Bin {mean_speed:.3f} rev/s: improvement {mean_imp:.4f} Nm "
+                     f"vs predicted {predicted:.4f} Nm"))
+
+    # ── test 4 ────────────────────────────────────────────────────────────────
+    def test_rms_error_reduction(self):
+        """RMS torque error must drop by at least MIN_RMS_REDUCTION when FF is enabled."""
+        actuals_off = self._run(ff_enabled=False)
+        actuals_on  = self._run(ff_enabled=True)
+        rms_off = _rms([self.TAU_IMPEDANCE - a for a in actuals_off])
+        rms_on  = _rms([self.TAU_IMPEDANCE - a for a in actuals_on])
+        reduction = 1.0 - rms_on / rms_off if rms_off > 0 else 1.0
+        self.assertGreater(reduction, self.MIN_RMS_REDUCTION,
+            f"RMS error reduction {reduction*100:.1f}% < "
+            f"{self.MIN_RMS_REDUCTION*100:.0f}% "
+            f"(off={rms_off:.4f} Nm, on={rms_on:.2e} Nm)")
+
+    # ── summary ───────────────────────────────────────────────────────────────
+    def test_print_paired_sweep_summary(self):
+        """Prints paired sweep results table. Always passes — read output for insight."""
+        actuals_off  = self._run(ff_enabled=False)
+        actuals_on   = self._run(ff_enabled=True)
+        improvements = [on - off for on, off in zip(actuals_on, actuals_off)]
+        deficits     = [self.TAU_IMPEDANCE - a for a in actuals_off]
+        rms_off = _rms([self.TAU_IMPEDANCE - a for a in actuals_off])
+        rms_on  = _rms([self.TAU_IMPEDANCE - a for a in actuals_on])
+        reduction = 1.0 - rms_on / rms_off if rms_off > 0 else 1.0
+
+        print("\n── Paired Velocity Sweep: FF Off vs FF On ──────────────────────────")
+        print(f"  Profile     : trapezoid  peak={self.VEL_PEAK} rev/s "
+              f"({self.VEL_PEAK*360:.0f} deg/s)  {len(self.velocities)} samples")
+        print(f"  tau_impedance (fixed)    : {self.TAU_IMPEDANCE:.3f} Nm")
+        print(f"  BACKEMF_FF_GAIN          : {self.robot.BACKEMF_FF_GAIN:.4f} Nm/(rev/s)")
+        print(f"  Peak deficit (FF off)    : {max(deficits):.4f} Nm  "
+              f"({max(deficits)/self.TAU_IMPEDANCE*100:.1f}% of tau_impedance)")
+        print()
+        print(f"  RMS torque error — FF off : {rms_off:.4f} Nm")
+        print(f"  RMS torque error — FF on  : {rms_on:.2e} Nm")
+        print(f"  RMS error reduction       : {reduction*100:.1f}%")
+        print()
+        col = f"  {'Speed bin (rev/s)':>18} | {'deficit-FF-off (Nm)':>20} | " \
+              f"{'improvement (Nm)':>18} | {'predicted (Nm)':>16} | {'ok':>4}"
+        print(col)
+        print("  " + "─" * (len(col) - 2))
+        bins_def = _bin_by_speed(self.velocities, deficits,     self.N_BINS)
+        bins_imp = _bin_by_speed(self.velocities, improvements, self.N_BINS)
+        for (spd, deficit), (_, imp) in zip(bins_def, bins_imp):
+            predicted = self.robot.BACKEMF_FF_GAIN * spd
+            ok = abs(imp - predicted) < self.BIN_TOL
+            print(f"  {spd:>18.4f} | {deficit:>20.6f} | "
+                  f"{imp:>18.6f} | {predicted:>16.6f} | {'✓' if ok else '✗':>4}")
+        print("────────────────────────────────────────────────────────────────────")
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

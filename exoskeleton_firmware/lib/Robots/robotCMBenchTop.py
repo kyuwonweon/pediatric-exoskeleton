@@ -54,6 +54,7 @@ class CMBenchTop(Robot):
         self._tau_backemf_ff = 0.0
         self._tau_external = 0.0
         self._tau_commanded = 0.0
+        self._q_des_test = 0.0
 
         # servo
         current_limit = self.params["servo"]["CURRENT_LIMIT"]  # TODO: move in servo
@@ -102,7 +103,7 @@ class CMBenchTop(Robot):
         out[new_index +4] = self.get_current()
         out[new_index +5] = self.get_tempetature()
         out[new_index + 6] = self.get_backemf()
-        out[new_index + 7] = self.get_torque_des()          # torque loop commanded by controller
+        out[new_index + 7] = self._q_des_test               # commanded position (set by test script)
         return index + self.rep_robot_msg_dim
 
     #### INITIALIZE FUNCTIONS
