@@ -29,6 +29,8 @@ class udp2ROS(Node):
         self.pub_robot = self.create_publisher(Float64MultiArray, f'robot_state_{robot}', 10)
         self.pub_ctrl = self.create_publisher(Float64MultiArray, f'ctrl_state_{robot}', 10)
         self.pub_backemf = self.create_publisher(Float64, f'backemf_{robot}', 10)
+        self.pub_current = self.create_publisher(Float64, f'current_{robot}', 10)
+        self.pub_tau_ff = self.create_publisher(Float64, f'tau_ff_{robot}', 10)
 
         # define socket interfaces
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -119,9 +121,15 @@ class udp2ROS(Node):
                     msg_ros_ctrl.data = msg_ctrl
                     bemf = Float64()
                     bemf.data = float(msg_robot[self.dim_reporter_msg + 9]) # robot slot 9 = back-EMF (Kt*omega)
+                    current = Float64()
+                    current.data = float(msg_robot[self.dim_reporter_msg + 7]) # robot slot 7 = motor current [A]
+                    tau_ff = Float64()
+                    tau_ff.data = float(msg_robot[self.dim_reporter_msg + 6]) # robot slot 6 = FF torque [Nm], 0 when FF off
                     self.pub_robot.publish(msg_ros_robot)
                     self.pub_ctrl.publish(msg_ros_ctrl)
                     self.pub_backemf.publish(bemf)
+                    self.pub_current.publish(current)
+                    self.pub_tau_ff.publish(tau_ff)
                     self.new_msg_flag =  False
 
                     # --- Metrics ---

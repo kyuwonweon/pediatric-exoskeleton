@@ -15,11 +15,16 @@ import pyb
 import math
 
 # ── trajectory parameters ─────────────────────────────────────────────────────
-_AMP       = 45.0    # deg — sinusoidal amplitude (keep well within ±90 deg limit)
+_AMP       = 30.0    # deg — sinusoidal amplitude  (peak vel ≈ 47 deg/s)
 _FREQ_HZ   = 0.25    # Hz  — oscillation frequency (one cycle = 4 s)
-_N_CYCLES  = 2       # cycles per phase
+_N_CYCLES  = 4       # cycles per phase — more cycles = more samples for averaging
 _DT        = 0.02    # s   — PVT step size (50 Hz, matches controller rate)
 _T_PAUSE   = 2.0     # s   — rest between phases so velocity reaches zero
+
+# Clip amplitude to 90 % of the tighter position limit so the sine never hits
+# the hardware clamp in set_transition_point (which would corrupt the velocity).
+_POS_LIMIT = min(abs(robot.position_limits[0]), abs(robot.position_limits[1]))
+_AMP       = min(_AMP, 0.9 * _POS_LIMIT)
 
 try:
     robot       # already initialised by main.py
@@ -90,6 +95,7 @@ _duration = _N_CYCLES / _FREQ_HZ
 _peak_vel  = _AMP * 2 * math.pi * _FREQ_HZ   # deg/s at zero crossing
 
 print("=== Back-EMF FF hardware test ===")
+print("Position limits:", robot.position_limits, "  effective amp =", _AMP, "deg")
 print("Trajectory: sine  amp =", _AMP, "deg  freq =", _FREQ_HZ, "Hz")
 print("Peak velocity :", round(_peak_vel, 1), "deg/s =",
       round(_peak_vel / 360, 3), "rev/s")

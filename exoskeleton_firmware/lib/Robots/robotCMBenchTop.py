@@ -34,10 +34,10 @@ class CMBenchTop(Robot):
         self.TORQUE_CONSTANT_LARGE_MOTOR = 0.13  # Nm/A
         self.KE_LARGE_MOTOR = 0.75    # V/(rev/s), from Ke=12.5 V/krpm
         self.MOTOR_RESISTANCE = 0.577             # Ohm
-        # Precomputed feedforward gain: tau_ff = BACKEMF_FF_GAIN * velocity [Nm / (rev/s)]
-        # Derivation: I_ff = Ke*omega / R,  tau_ff = Kt * I_ff = (Kt*Ke/R) * omega
-        self.BACKEMF_FF_GAIN = (self.TORQUE_CONSTANT_LARGE_MOTOR * self.KE_LARGE_MOTOR
-                                / self.MOTOR_RESISTANCE) if self.MOTOR_RESISTANCE > 0 else 0.0
+        # Feedforward gain: I_ff = BACKEMF_FF_GAIN * velocity [A / (rev/s)]
+        # TORQUE_LOOP_INPUT_OFFSET takes Amps. Theoretical Ke/R = 1.3 but empirically
+        # tuned to 1.0 — above ~1.3 the motor becomes self-propelling (negative damping).
+        self.BACKEMF_FF_GAIN = 1.0
 
         self.K =0.0
         self.B =0.0
