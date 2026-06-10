@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """
-Back-EMF feedforward validation analysis.
+Back-EMF + acceleration feedforward validation.
 
-Reads a ROS2 bag from the hardware test and produces torque and current
-vs velocity plots for Phase 1 (FF off) and Phase 2 (FF on).
+Supports two test types (auto-detected):
+  manual   — test_backemf_manual.py   : slot 11 is always 1.0/2.0/3.0
+  hardware — test_backemf_hardware.py : slot 11 is 1.0/2.0/3.0 during pauses,
+                                        commanded position during sweeps
+
+Plots:
+  1. Binned mean current vs velocity  (Phase 1 vs 2) — back-EMF gain
+  2. Binned mean current vs accel     (Phase 2 vs 3) — acc FF gain
+  3. _tau_acc_ff vs acceleration      (Phase 3)      — acc FF math check
+  4. Actual current vs _tau_commanded (all phases)   — model accuracy
+  5. Position tracking error vs time  (all phases)   — hardware test only
 
 Usage:
-    python3 analyze_backemf.py <path_to_bag_folder>            # PVT trajectory mode
-    python3 analyze_backemf.py <path_to_bag_folder> --manual   # manual rotation mode
-
-In --manual mode the x-axis uses measured velocity instead of commanded
-velocity derived from q_des, and the moving-sample filter uses
-|measured_velocity| > VEL_THRESHOLD_DEG_S instead of |q_des| > 1 deg.
+    python3 analyze_backemf.py <bag_folder>
 """
 
 import sys
@@ -21,31 +25,32 @@ import rosbag2_py
 from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
 
-# ── trajectory parameters (must match test script) ────────────────────────────
-AMP       = 30.0    # deg
-FREQ_HZ   = 0.25    # Hz
-BACKEMF_FF_GAIN     = 1.0   # A / (rev/s)  — empirically tuned (Ke/R ≈ 1.3 causes over-compensation)
-VEL_THRESHOLD_DEG_S = 5.0   # deg/s — manual mode: ignore samples where motor is barely moving
+# ── message indices ───────────────────────────────────────────────────────────
+# 0  timestamp    3  acceleration    6  _tau_acc_ff     9  temperature
+# 1  position     4  _tau_commanded  7  _tau_backemf_ff 10 _tau_acc_ff
+# 2  velocity     5  actual torque   8  current         11 phase marker / q_des
+IDX_TIMESTAMP   = 0
+IDX_POSITION    = 1
+IDX_VELOCITY    = 2
+IDX_ACCEL       = 3
+IDX_TAU_CMD     = 4
+IDX_BACKEMF_FF  = 7
+IDX_CURRENT     = 8
+IDX_ACC_FF      = 10
+IDX_PHASE       = 11
 
-# ── data indices in /robot_state_CubeMars ─────────────────────────────────────
-IDX_TIMESTAMP  = 0
-IDX_POSITION   = 1
-IDX_VELOCITY   = 2   # measured velocity deg/s (120 Hz filtered)
-IDX_ACTUAL_TRQ = 5
-IDX_FF_TERM    = 7
-IDX_CURRENT    = 8   # quadrature current A
-IDX_Q_DES      = 11
+VEL_THRESHOLD = 5.0   # deg/s — exclude near-still samples
+MARKER_VALUES = {1.0, 2.0, 3.0}
 
 
-def read_bag(bag_path: str):
+def read_bag(bag_path: str) -> np.ndarray:
     reader = rosbag2_py.SequentialReader()
-    storage_options = rosbag2_py.StorageOptions(uri=bag_path, storage_id='mcap')
-    converter_options = rosbag2_py.ConverterOptions('', '')
-    reader.open(storage_options, converter_options)
-
+    reader.open(
+        rosbag2_py.StorageOptions(uri=bag_path, storage_id='mcap'),
+        rosbag2_py.ConverterOptions('', '')
+    )
     topic_types = reader.get_all_topics_and_types()
     type_map = {t.name: t.type for t in topic_types}
-
     rows = []
     while reader.has_next():
         topic, msg_bytes, _ = reader.read_next()
@@ -53,257 +58,242 @@ def read_bag(bag_path: str):
             msg_type = get_message(type_map[topic])
             msg = deserialize_message(msg_bytes, msg_type)
             rows.append(list(msg.data))
-
     return np.array(rows, dtype=np.float64)
 
 
-def compute_commanded_velocity(q_des: np.ndarray, timestamps: np.ndarray) -> np.ndarray:
-    """Differentiate q_des numerically to get clean commanded velocity in deg/s."""
-    qdot = np.gradient(q_des, timestamps)
-    return qdot
+def is_hardware_test(data: np.ndarray) -> bool:
+    """Hardware test has commanded sine in slot 11 during sweeps — not just 1/2/3."""
+    marker = data[:, IDX_PHASE]
+    sweep_samples = ~np.isin(np.round(marker, 4), list(MARKER_VALUES) + [0.0])
+    return sweep_samples.sum() > 20
 
 
-def split_phases(data: np.ndarray, manual: bool = False):
+def split_phases(data: np.ndarray):
     """
-    Split data into Phase 1 (FF off) and Phase 2 (FF on)
-    by detecting when the FF term (data[7]) becomes non-zero.
-
-    manual=True: filter by |measured_velocity| > threshold instead of |q_des| > 1.
+    Manual test:  slot 11 is always 1/2/3 → filter by exact value.
+    Hardware test: slot 11 is 1/2/3 during pauses, q_des during sweeps →
+                   split temporally at the first appearance of each marker.
+    Returns (p1, p2, p3, test_type) where test_type is 'manual' or 'hardware'.
     """
-    ff = data[:, IDX_FF_TERM]
-    ff_active = np.abs(ff) > 1e-4
+    marker = data[:, IDX_PHASE]
 
-    transition = np.where(np.diff(ff_active.astype(int)) > 0)[0]
-    if len(transition) == 0:
-        print("WARNING: Could not find Phase 1 → Phase 2 transition. "
-              "Is FF actually being toggled?")
-        return data, data
+    if not is_hardware_test(data):
+        p1 = data[marker == 1.0]
+        p2 = data[marker == 2.0]
+        p3 = data[marker == 3.0]
+        if len(p1) == 0 or len(p2) == 0 or len(p3) == 0:
+            print(f"WARNING: phase marker missing. Counts: p1={len(p1)} p2={len(p2)} p3={len(p3)}")
+        return p1, p2, p3, 'manual'
 
-    split = transition[0] + 1
-    phase1_data = data[:split]
-    phase2_data = data[split:]
+    # Hardware: find first index of each marker to get phase boundaries
+    idx1 = np.where(marker == 1.0)[0]
+    idx2 = np.where(marker == 2.0)[0]
+    idx3 = np.where(marker == 3.0)[0]
 
-    if manual:
-        p1_moving = np.abs(phase1_data[:, IDX_VELOCITY]) > VEL_THRESHOLD_DEG_S
-        p2_moving = np.abs(phase2_data[:, IDX_VELOCITY]) > VEL_THRESHOLD_DEG_S
-    else:
-        p1_moving = np.abs(phase1_data[:, IDX_Q_DES]) > 1.0
-        p2_moving = np.abs(phase2_data[:, IDX_Q_DES]) > 1.0
+    if len(idx1) == 0 or len(idx2) == 0 or len(idx3) == 0:
+        print("WARNING: phase markers not found in hardware bag.")
+        return data, data, data, 'hardware'
 
-    return phase1_data[p1_moving], phase2_data[p2_moving]
+    start1, start2, start3 = idx1[0], idx2[0], idx3[0]
+    p1 = data[start1:start2]
+    p2 = data[start2:start3]
+    p3 = data[start3:]
+    return p1, p2, p3, 'hardware'
+
+
+def get_sweep_data(phase: np.ndarray):
+    """Extract only sweep samples (slot 11 = commanded position, not marker)."""
+    marker = phase[:, IDX_PHASE]
+    sweep = ~np.isin(np.round(marker, 4), list(MARKER_VALUES) + [0.0])
+    return phase[sweep]
+
+
+def moving(phase: np.ndarray) -> np.ndarray:
+    if len(phase) == 0:
+        return phase
+    return phase[np.abs(phase[:, IDX_VELOCITY]) > VEL_THRESHOLD]
+
+
+def bin_mean(x, y, bins):
+    centers = 0.5 * (bins[:-1] + bins[1:])
+    means, stds = [], []
+    for lo, hi in zip(bins[:-1], bins[1:]):
+        mask = (x >= lo) & (x < hi)
+        if mask.sum() > 5:
+            means.append(np.mean(y[mask]))
+            stds.append(np.std(y[mask]) / np.sqrt(mask.sum()))
+        else:
+            means.append(np.nan)
+            stds.append(np.nan)
+    return centers, np.array(means), np.array(stds)
+
+
+def linear_fit(x, y):
+    mask = ~np.isnan(x) & ~np.isnan(y)
+    if mask.sum() < 2:
+        return np.nan, np.nan
+    return np.polyfit(x[mask], y[mask], 1)
 
 
 def main():
-    bag_path = sys.argv[1] if len(sys.argv) > 1 else "backemf_hw_test"
-    manual   = '--manual' in sys.argv
-
-    print(f"Reading bag: {bag_path}  (mode: {'manual' if manual else 'PVT'})")
+    bag_path = sys.argv[1] if len(sys.argv) > 1 else "backemf_manual_test"
+    print(f"Reading bag: {bag_path}")
     data = read_bag(bag_path)
     print(f"  Total samples: {len(data)}")
-    if data.ndim < 2 or len(data) == 0:
-        print("ERROR: bag is empty — start the bag recording before running the test.")
+    if len(data) == 0:
+        print("ERROR: bag is empty.")
         return
 
-    if manual:
-        # Use measured velocity directly — no commanded velocity needed.
-        data_with_vel = data
-        phase1, phase2 = split_phases(data_with_vel, manual=True)
-        vel1 = phase1[:, IDX_VELOCITY]   # measured velocity deg/s
-        vel2 = phase2[:, IDX_VELOCITY]
-        vel_label = 'Measured velocity (deg/s)'
+    p1_raw, p2_raw, p3_raw, test_type = split_phases(data)
+    print(f"  Test type: {test_type}")
+
+    # moving-filtered data for current plots
+    p1 = moving(p1_raw)
+    p2 = moving(p2_raw)
+    p3 = moving(p3_raw)
+    print(f"  Phase 1 (FF off):      {len(p1)} moving samples")
+    print(f"  Phase 2 (Back-EMF FF): {len(p2)} moving samples")
+    print(f"  Phase 3 (+ Acc FF):    {len(p3)} moving samples")
+
+    if len(p1) == 0 or len(p2) == 0:
+        print("ERROR: Phase 1 or 2 empty — check bag.")
+        return
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle('Feedforward Validation', fontsize=14)
+
+    # ── Plot 1: current vs velocity (Phase 1 vs 2) ───────────────────────────
+    ax = axes[0, 0]
+    vel_bins = np.linspace(-150, 150, 16)
+    c1, m1, s1 = bin_mean(p1[:, IDX_VELOCITY], p1[:, IDX_CURRENT], vel_bins)
+    c2, m2, s2 = bin_mean(p2[:, IDX_VELOCITY], p2[:, IDX_CURRENT], vel_bins)
+    valid1, valid2 = ~np.isnan(m1), ~np.isnan(m2)
+    ax.errorbar(c1[valid1], m1[valid1], yerr=s1[valid1], fmt='o-', color='steelblue', label='Phase 1 — FF off')
+    ax.errorbar(c2[valid2], m2[valid2], yerr=s2[valid2], fmt='s-', color='tomato',    label='Phase 2 — Back-EMF FF')
+    k1, _ = linear_fit(c1[valid1], m1[valid1])
+    k2, _ = linear_fit(c2[valid2], m2[valid2])
+    pct = (abs(k1) - abs(k2)) / abs(k1) * 100 if k1 != 0 else 0
+    ax.set_title(f'Current vs Velocity\nslope: {k1:.4f} → {k2:.4f} A/(deg/s)  ({pct:.1f}% reduction)')
+    ax.set_xlabel('Velocity (deg/s)')
+    ax.set_ylabel('Mean current (A)')
+    ax.legend()
+    ax.axhline(0, color='k', lw=0.5, ls='--')
+    ax.axvline(0, color='k', lw=0.5, ls='--')
+    ax.grid(True, alpha=0.3)
+
+    # ── Plot 2: current vs acceleration (Phase 2 vs 3) ───────────────────────
+    ax = axes[0, 1]
+    if len(p3) > 0:
+        acc_bins = np.linspace(-800, 800, 16)
+        c2a, m2a, s2a = bin_mean(p2[:, IDX_ACCEL], p2[:, IDX_CURRENT], acc_bins)
+        c3a, m3a, s3a = bin_mean(p3[:, IDX_ACCEL], p3[:, IDX_CURRENT], acc_bins)
+        valid2a, valid3a = ~np.isnan(m2a), ~np.isnan(m3a)
+        ax.errorbar(c2a[valid2a], m2a[valid2a], yerr=s2a[valid2a], fmt='o-', color='steelblue', label='Phase 2 — Acc FF off')
+        ax.errorbar(c3a[valid3a], m3a[valid3a], yerr=s3a[valid3a], fmt='s-', color='tomato',    label='Phase 3 — Acc FF on')
+        k2a, _ = linear_fit(c2a[valid2a], m2a[valid2a])
+        k3a, _ = linear_fit(c3a[valid3a], m3a[valid3a])
+        pct_a = (abs(k2a) - abs(k3a)) / abs(k2a) * 100 if k2a != 0 else 0
+        ax.set_title(f'Current vs Acceleration\nslope: {k2a:.5f} → {k3a:.5f} A/(deg/s²)  ({pct_a:.1f}% reduction)')
     else:
-        timestamps    = data[:, IDX_TIMESTAMP]
-        q_des         = data[:, IDX_Q_DES]
-        qdot_cmd      = compute_commanded_velocity(q_des, timestamps)
-        data_with_vel = np.column_stack([data, qdot_cmd])
-        phase1, phase2 = split_phases(data_with_vel, manual=False)
-        vel1 = phase1[:, -1]             # commanded velocity deg/s
-        vel2 = phase2[:, -1]
-        vel_label = 'Commanded velocity (deg/s)'
+        ax.set_title('Current vs Acceleration\n(no Phase 3 data)')
+    ax.set_xlabel('Acceleration (deg/s²)')
+    ax.set_ylabel('Mean current (A)')
+    ax.legend()
+    ax.axhline(0, color='k', lw=0.5, ls='--')
+    ax.axvline(0, color='k', lw=0.5, ls='--')
+    ax.grid(True, alpha=0.3)
 
-    trq1 = phase1[:, IDX_ACTUAL_TRQ]
-    trq2 = phase2[:, IDX_ACTUAL_TRQ]
-
-    # Convert velocity to rev/s for FF calculation
-    vel1_revs = vel1 / 360.0
-    vel2_revs = vel2 / 360.0
-
-    cur1 = phase1[:, IDX_CURRENT]
-    cur2 = phase2[:, IDX_CURRENT]
-
-    print(f"\nPhase 1 (FF off): {len(phase1)} samples")
-    print(f"Phase 2 (FF on):  {len(phase2)} samples")
-
-    # ── bin by commanded velocity and compute mean torque ─────────────────────
-    bins = np.linspace(-200, 200, 21)  # deg/s bins
-    centers = 0.5 * (bins[:-1] + bins[1:])
-
-    def bin_mean(vel, trq, bins):
-        means, stds, counts = [], [], []
-        for lo, hi in zip(bins[:-1], bins[1:]):
-            mask = (vel >= lo) & (vel < hi)
-            if mask.sum() > 2:
-                means.append(np.mean(trq[mask]))
-                stds.append(np.std(trq[mask]) / np.sqrt(mask.sum()))
-                counts.append(mask.sum())
-            else:
-                means.append(np.nan)
-                stds.append(np.nan)
-                counts.append(0)
-        return np.array(means), np.array(stds)
-
-    m1, s1 = bin_mean(vel1, trq1, bins)
-    m2, s2 = bin_mean(vel2, trq2, bins)
-
-    expected_offset = BACKEMF_FF_GAIN * centers / 360.0  # Nm
-
-    # ── plot ──────────────────────────────────────────────────────────────────
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-
-    # Left: scatter plot
-    ax = axes[0]
-    ax.scatter(vel1, trq1, s=2, alpha=0.3, color='steelblue', label='Phase 1 FF off')
-    ax.scatter(vel2, trq2, s=2, alpha=0.3, color='tomato',    label='Phase 2 FF on')
-    ax.set_xlabel(vel_label)
-    ax.set_ylabel('Actual torque (Nm)')
-    ax.set_title('Torque vs Velocity — raw scatter')
+    # ── Plot 3: _tau_acc_ff vs acceleration (Phase 3) ────────────────────────
+    ax = axes[1, 0]
+    if len(p3) > 0:
+        acc_vals = p3[:, IDX_ACCEL]
+        acc_ff   = p3[:, IDX_ACC_FF]
+        ax.scatter(acc_vals, acc_ff, s=3, alpha=0.3, color='tomato')
+        k, b = np.polyfit(acc_vals, acc_ff, 1)
+        x_line = np.linspace(acc_vals.min(), acc_vals.max(), 100)
+        ax.plot(x_line, k * x_line + b, 'k-', lw=1.5, label=f'fit: slope={k:.5f}')
+        ax.set_title(f'_tau_acc_ff vs Acceleration (Phase 3)\nslope={k:.5f} A/(deg/s²) — should be linear through origin')
+    else:
+        ax.set_title('_tau_acc_ff vs Acceleration\n(no Phase 3 data)')
+    ax.set_xlabel('Acceleration (deg/s²)')
+    ax.set_ylabel('_tau_acc_ff (A)')
+    ax.axhline(0, color='k', lw=0.5, ls='--')
+    ax.axvline(0, color='k', lw=0.5, ls='--')
     ax.legend()
     ax.grid(True, alpha=0.3)
 
-    # Right: binned means — expected FF shown as vertical shift of Phase 1.
-    # If FF works perfectly, Phase 2 should sit on the "Phase 1 + FF" line.
-    ax = axes[1]
-    valid = ~np.isnan(m1) & ~np.isnan(m2)
-    expected_phase2 = m1[valid] + expected_offset[valid]   # where Phase 2 should be
-    ax.errorbar(centers[valid], m1[valid], yerr=s1[valid],
-                fmt='o-', color='steelblue', label='Phase 1 FF off (mean ± SE)')
-    ax.errorbar(centers[valid], m2[valid], yerr=s2[valid],
-                fmt='s-', color='tomato',    label='Phase 2 FF on  (mean ± SE)')
-    ax.plot(centers[valid], expected_phase2, 'k--', linewidth=1.5,
-            label=f'Phase 1 + expected FF ({BACKEMF_FF_GAIN} × vel_rev_s)\n→ where Phase 2 should be')
-    ax.set_xlabel(vel_label)
-    ax.set_ylabel('Mean actual torque (Nm)')
-    ax.set_title('Torque vs Velocity — binned means')
+    # ── Plot 4: actual current vs _tau_commanded (all phases) ────────────────
+    ax = axes[1, 1]
+    for phase, color, label in [
+        (p1, 'steelblue', 'Phase 1'),
+        (p2, 'orange',    'Phase 2'),
+        (p3, 'tomato',    'Phase 3'),
+    ]:
+        if len(phase) > 0:
+            ax.scatter(phase[:, IDX_TAU_CMD], phase[:, IDX_CURRENT],
+                       s=3, alpha=0.3, color=color, label=label)
+    all_cmd = np.concatenate([p[:, IDX_TAU_CMD] for p in [p1, p2, p3] if len(p) > 0])
+    lim = np.percentile(np.abs(all_cmd), 99) * 1.1
+    ax.plot([-lim, lim], [-lim, lim], 'k--', lw=1.2, label='y = x (perfect model)')
+    ax.set_xlim(-lim, lim)
+    ax.set_ylim(-lim, lim)
+    ax.set_xlabel('_tau_commanded (A)')
+    ax.set_ylabel('Actual current (A)')
+    ax.set_title('Actual current vs Commanded\n(points on y=x = perfect model)')
     ax.legend()
     ax.grid(True, alpha=0.3)
 
-    # Print numerical summary
-    print("\n--- Binned torque difference (Phase2 - Phase1) vs expected FF ---")
-    print(f"{'Vel (deg/s)':>12} {'ΔT_meas (Nm)':>14} {'ΔT_expected (Nm)':>18}")
-    for c, d1, d2, exp in zip(centers[valid], m1[valid], m2[valid],
-                               expected_offset[valid]):
-        print(f"{c:>12.1f} {d2 - d1:>14.4f} {exp:>18.4f}")
+    # ── Plots 5-10: tracking error + position per phase (hardware only) ────────
+    if test_type == 'hardware':
+        fig2, axes2 = plt.subplots(3, 2, figsize=(14, 12))
+        fig2.suptitle('Position Tracking — per phase', fontsize=14)
+
+        phases_hw = [
+            (p1_raw, 'steelblue', 'Phase 1 — FF off'),
+            (p2_raw, 'orange',    'Phase 2 — Back-EMF FF'),
+            (p3_raw, 'tomato',    'Phase 3 — + Acc FF'),
+        ]
+
+        for row, (phase_raw, color, label) in enumerate(phases_hw):
+            ax_err = axes2[row, 0]
+            ax_pos = axes2[row, 1]
+
+            sweep = get_sweep_data(phase_raw)
+            if len(sweep) == 0:
+                ax_err.set_title(f'{label}\n(no sweep data)')
+                ax_pos.set_title(f'{label}\n(no sweep data)')
+                continue
+
+            t        = sweep[:, IDX_TIMESTAMP] - sweep[0, IDX_TIMESTAMP]
+            q_des    = sweep[:, IDX_PHASE]
+            q_actual = sweep[:, IDX_POSITION]
+            error    = q_des - q_actual
+            rms_err  = np.sqrt(np.mean(error ** 2))
+            max_err  = np.max(np.abs(error))
+
+            ax_err.plot(t, error, lw=1, color=color)
+            ax_err.axhline(0, color='k', lw=0.5, ls='--')
+            ax_err.set_ylabel('Error (deg)')
+            ax_err.set_title(f'{label}\nTracking error  RMS={rms_err:.2f}°  max={max_err:.2f}°')
+            ax_err.grid(True, alpha=0.3)
+
+            ax_pos.plot(t, q_des,    lw=1.5, ls='--', color='k',   label='Commanded')
+            ax_pos.plot(t, q_actual, lw=1,   color=color,           label='Actual')
+            ax_pos.set_ylabel('Position (deg)')
+            ax_pos.set_title(f'{label}\nCommanded vs Actual')
+            ax_pos.legend()
+            ax_pos.grid(True, alpha=0.3)
+
+        for ax in axes2[-1, :]:
+            ax.set_xlabel('Time (s)')
+
+        fig2.tight_layout()
+        fig2.savefig('tracking_error.png', dpi=150)
+        print("Saved: tracking_error.png")
 
     plt.tight_layout()
-    plt.savefig('backemf_validation.png', dpi=150)
-    print("\nPlot saved to backemf_validation.png")
-
-    # ── lag hypothesis plots (Phase 2 only) ───────────────────────────────────
-    vel_meas_p2 = phase2[:, IDX_VELOCITY]          # deg/s, 120 Hz filtered
-    t2          = phase2[:, IDX_TIMESTAMP]
-    t2_norm     = t2 - t2[0]
-
-    # Commanded acceleration — used to label each sample as accelerating/decelerating
-    acc_cmd_p2  = np.gradient(vel2, t2)
-    accel_mask  = acc_cmd_p2 > 0
-    decel_mask  = acc_cmd_p2 <= 0
-
-    fig2, axes2 = plt.subplots(1, 2, figsize=(14, 5))
-    fig2.suptitle('Filter Lag Hypothesis — Phase 2 (FF on)')
-
-    # Left: commanded vs measured velocity over time
-    # A visible phase shift here directly confirms filter lag.
-    ax = axes2[0]
-    ax.plot(t2_norm, vel2,        'k--', lw=1.2, label='Commanded velocity')
-    ax.plot(t2_norm, vel_meas_p2, color='tomato', lw=1.2,
-            label='Measured velocity (120 Hz filtered)')
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Velocity (deg/s)')
-    ax.set_title('Commanded vs. measured velocity')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    # Right: hysteresis check — torque vs commanded velocity, split by acceleration sign.
-    # Lag causes the feedforward to under-compensate while speeding up and
-    # over-compensate while slowing down, creating a loop.
-    # Gain error produces a single offset line with no loop.
-    ax = axes2[1]
-    ax.scatter(vel2[accel_mask], trq2[accel_mask], s=2, alpha=0.4,
-               color='steelblue', label='Accelerating')
-    ax.scatter(vel2[decel_mask], trq2[decel_mask], s=2, alpha=0.4,
-               color='tomato',    label='Decelerating')
-    ax.axhline(0, color='k', lw=0.8, ls='--')
-    ax.set_xlabel(vel_label)
-    ax.set_ylabel('Actual torque (Nm)')
-    ax.set_title('Hysteresis check (FF on)\nLoop → lag,  Parallel lines → gain error')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    plt.savefig('backemf_lag_test.png', dpi=150)
-    print("Lag test plot saved to backemf_lag_test.png")
-
-    # ── current vs velocity ───────────────────────────────────────────────────
-    # If FF is reaching the current loop, Phase 2 slope should be much flatter.
-    # Back-EMF drag creates current opposing motion: slope = -Ke/R = -1.3 A/(rev/s)
-    # FF injects current in direction of motion: +BACKEMF_FF_GAIN per rev/s
-    # So Phase 2 should sit above Phase 1 by FF_gain × velocity.
-    KE_OVER_R = 0.75 / 0.577   # theoretical back-EMF drag slope A/(rev/s)
-
-    fig3, axes3 = plt.subplots(1, 2, figsize=(14, 5))
-    fig3.suptitle('Current vs Velocity — does FF actually reach the current loop?')
-
-    # Left: raw scatter
-    ax = axes3[0]
-    ax.scatter(vel1_revs, cur1, s=2, alpha=0.3, color='steelblue', label='Phase 1 FF off')
-    ax.scatter(vel2_revs, cur2, s=2, alpha=0.3, color='tomato',    label='Phase 2 FF on')
-    vel_line = np.linspace(-0.3, 0.3, 100)
-    ax.plot(vel_line, -KE_OVER_R * vel_line,             'k--',  lw=1.5, label=f'Expected FF off  slope=-{KE_OVER_R:.2f}')
-    ax.plot(vel_line, -(KE_OVER_R - BACKEMF_FF_GAIN) * vel_line, 'k:',  lw=1.5, label=f'Expected FF on   slope=-{(KE_OVER_R-BACKEMF_FF_GAIN):.2f}')
-    ax.set_xlabel('Measured velocity (rev/s)')
-    ax.set_ylabel('Quadrature current (A)')
-    ax.set_title('Raw scatter')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    # Right: binned means — easier to see the slope change
-    cur_bins = np.linspace(-0.3, 0.3, 13)
-    cur_centers = 0.5 * (cur_bins[:-1] + cur_bins[1:])
-
-    def bin_mean_cur(vel, cur, bins):
-        means, stds = [], []
-        for lo, hi in zip(bins[:-1], bins[1:]):
-            mask = (vel >= lo) & (vel < hi)
-            if mask.sum() > 2:
-                means.append(np.mean(cur[mask]))
-                stds.append(np.std(cur[mask]) / np.sqrt(mask.sum()))
-            else:
-                means.append(np.nan)
-                stds.append(np.nan)
-        return np.array(means), np.array(stds)
-
-    mc1, sc1 = bin_mean_cur(vel1_revs, cur1, cur_bins)
-    mc2, sc2 = bin_mean_cur(vel2_revs, cur2, cur_bins)
-
-    ax = axes3[1]
-    valid = ~np.isnan(mc1) & ~np.isnan(mc2)
-    expected_cur_phase2 = mc1[valid] + BACKEMF_FF_GAIN * cur_centers[valid]  # Phase 1 + FF shift
-    ax.errorbar(cur_centers[valid], mc1[valid], yerr=sc1[valid],
-                fmt='o-', color='steelblue', label='Phase 1 FF off')
-    ax.errorbar(cur_centers[valid], mc2[valid], yerr=sc2[valid],
-                fmt='s-', color='tomato',    label='Phase 2 FF on')
-    ax.plot(cur_centers[valid], expected_cur_phase2, 'k--', lw=1.5,
-            label=f'Phase 1 + expected FF ({BACKEMF_FF_GAIN} A/(rev/s))\n→ where Phase 2 should be')
-    ax.set_xlabel('Measured velocity (rev/s)')
-    ax.set_ylabel('Mean quadrature current (A)')
-    ax.set_title('Binned means — compare slopes')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    plt.savefig('backemf_current_debug.png', dpi=150)
-    print("Current debug plot saved to backemf_current_debug.png")
-
+    plt.savefig('feedforward_validation.png', dpi=150)
+    print("Saved: feedforward_validation.png")
     plt.show()
 
 

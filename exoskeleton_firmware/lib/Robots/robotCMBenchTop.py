@@ -34,10 +34,10 @@ class CMBenchTop(Robot):
         self.TORQUE_CONSTANT_LARGE_MOTOR = 0.13  # Nm/A
         self.KE_LARGE_MOTOR = 0.75    # V/(rev/s), from Ke=12.5 V/krpm
         self.MOTOR_RESISTANCE = 0.577             # Ohm
-        # Feedforward gain: I_ff = BACKEMF_FF_GAIN * velocity [A / (rev/s)]
-        # TORQUE_LOOP_INPUT_OFFSET takes Amps. Theoretical Ke/R = 1.3 but empirically
-        # tuned to 1.0 — above ~1.3 the motor becomes self-propelling (negative damping).
+        # Back-EMF FF: I_ff = BACKEMF_FF_GAIN * v_joint  [A/(rev/s)]
         self.BACKEMF_FF_GAIN = 1.0
+        # Acceleration FF: I_ff = ACC_FF_GAIN * a_joint  [A/(rev/s^2)]
+        self.ACC_FF_GAIN = 0.0
 
         self.K =0.0
         self.B =0.0
@@ -52,6 +52,7 @@ class CMBenchTop(Robot):
         self.reference_position = 0.0
         self._backemf_ff_enabled = False
         self._tau_backemf_ff = 0.0
+        self._tau_acc_ff = 0.0
         self._tau_external = 0.0
         self._tau_commanded = 0.0
         self._q_des_test = 0.0
@@ -102,7 +103,7 @@ class CMBenchTop(Robot):
         # current and temperature
         out[new_index +4] = self.get_current()
         out[new_index +5] = self.get_tempetature()
-        out[new_index + 6] = self.get_backemf()
+        out[new_index + 6] = self._tau_acc_ff               # acceleration feedforward contribution
         out[new_index + 7] = self._q_des_test               # commanded position (set by test script)
         return index + self.rep_robot_msg_dim
 
@@ -244,12 +245,14 @@ class CMBenchTop(Robot):
         self.servo.set_Kpt(self.Kpt)
 
 
-    def _compute_backemf_feedforward(self):
-        if self._backemf_ff_enabled and self.BACKEMF_FF_GAIN > 0.0:
-            self._tau_backemf_ff = self.BACKEMF_FF_GAIN * self.servo.velocity  # [Nm] at motor shaft
+    def _compute_feedforward(self):
+        if self._backemf_ff_enabled:
+            self._tau_backemf_ff = self.BACKEMF_FF_GAIN * self.servo.velocity   # [A]
+            self._tau_acc_ff = self.ACC_FF_GAIN * self.servo.acceleration # [A]
         else:
             self._tau_backemf_ff = 0.0
-        self._tau_commanded = self._tau_external + self._tau_backemf_ff
+            self._tau_acc_ff = 0.0
+        self._tau_commanded = self._tau_external + self._tau_backemf_ff + self._tau_acc_ff
         self.servo.set_tau_offset(self._tau_commanded)
 
     def _update_callback(self, timer_object):
@@ -260,7 +263,7 @@ class CMBenchTop(Robot):
             self._update_acceleration()
             self._compute_transmission()
             self._update_K()
-            self._compute_backemf_feedforward()
+            self._compute_feedforward()
 
 
 
