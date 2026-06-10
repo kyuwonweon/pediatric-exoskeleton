@@ -51,7 +51,7 @@
     "filt_loadcell": 0.2
   },
   "reporter": {
-    "dim_robot_msg": 10,
+    "dim_robot_msg": 11,
     "dim_ctrl_msg": 10,
     "dim_decorator_msg": 5,
     "dim_ctrl_fact_msg": 1,

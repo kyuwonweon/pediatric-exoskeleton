@@ -1,6 +1,5 @@
 import pyb                                          # type: ignore
 import json
-import math
 
 # from lib.Hardware.imu_streamer import ImuStreamer
 from lib.Hardware.servoMotorCM import ServoCM
@@ -32,7 +31,13 @@ class CMBenchTop(Robot):
         self.Kpt = 0.0
 
         self.KNEE_JOINT_ENC_COEF = 360 / 2**12
-        self.TORQUE_CONSTANT_LARGE_MOTOR = 0.13 # [Nm/A] from AKE60-*-KV80 quasi direct sheet
+        self.TORQUE_CONSTANT_LARGE_MOTOR = 0.13  # Nm/A
+        self.KE_LARGE_MOTOR = 0.75    # V/(rev/s), from Ke=12.5 V/krpm
+        self.MOTOR_RESISTANCE = 0.577             # Ohm
+        # Back-EMF FF: I_ff = BACKEMF_FF_GAIN * v_joint  [A/(rev/s)]
+        self.BACKEMF_FF_GAIN = 1.0
+        # Acceleration FF: I_ff = ACC_FF_GAIN * a_joint  [A/(rev/s^2)]
+        self.ACC_FF_GAIN = 0.0
 
         self.K =0.0
         self.B =0.0
@@ -45,6 +50,12 @@ class CMBenchTop(Robot):
         self.transmission = 8
 
         self.reference_position = 0.0
+        self._backemf_ff_enabled = False
+        self._tau_backemf_ff = 0.0
+        self._tau_acc_ff = 0.0
+        self._tau_external = 0.0
+        self._tau_commanded = 0.0
+        self._q_des_test = 0.0
 
         # servo
         current_limit = self.params["servo"]["CURRENT_LIMIT"]  # TODO: move in servo
@@ -61,6 +72,8 @@ class CMBenchTop(Robot):
         return self.servo.position_commanded * self.KNEE_JOINT_ENC_COEF
     def get_position_incr_encoder(self):
         return  self.pos_incr_encoder + self.offset_incr_encoder
+    def get_backemf(self):
+        return self.KE_LARGE_MOTOR * self.servo.velocity
     def get_torque_des(self):
         return self.servo.torque_commanded
     def get_torque_act(self):
@@ -83,13 +96,15 @@ class CMBenchTop(Robot):
         # 3 - loadcell Fz
         # 4 - loadcell My
         # 5 - thigh positionll
-        out[new_index]= 0.0
-        out[new_index + 1] = 0.0
+        out[new_index]     = self._tau_commanded              # total offset commanded to drive [Nm]
+        out[new_index + 1] = self.get_torque_act()           # actual torque from drive
         out[new_index + 2] = self.get_position_incr_encoder()
-        out[new_index + 3] = 0.0
+        out[new_index + 3] = self._tau_backemf_ff            # feedforward contribution
         # current and temperature
         out[new_index +4] = self.get_current()
         out[new_index +5] = self.get_tempetature()
+        out[new_index + 6] = self._tau_acc_ff               # acceleration feedforward contribution
+        out[new_index + 7] = self._q_des_test               # commanded position (set by test script)
         return index + self.rep_robot_msg_dim
 
     #### INITIALIZE FUNCTIONS
@@ -135,7 +150,7 @@ class CMBenchTop(Robot):
             position = min(position, self.position_limits[1])
 
             # position should be in degs
-            position=  int(position / self.KNEE_JOINT_ENC_COEF)
+            position = int(position / self.KNEE_JOINT_ENC_COEF)
             self.servo.set_pos_loop_set_point(position)
         else:
             print("The current profiler doesn't support this method!")
@@ -163,7 +178,10 @@ class CMBenchTop(Robot):
 
 
     def set_tau_offset(self, tau=0.0):
-        self.servo.set_tau_offset(tau)
+        self._tau_external = tau
+
+    def set_backemf_feedforward(self, enabled: bool):
+        self._backemf_ff_enabled = enabled
 
     def set_KD_parameter(self, K: float, B: float) -> None:
         """
@@ -227,6 +245,16 @@ class CMBenchTop(Robot):
         self.servo.set_Kpt(self.Kpt)
 
 
+    def _compute_feedforward(self):
+        if self._backemf_ff_enabled:
+            self._tau_backemf_ff = self.BACKEMF_FF_GAIN * self.servo.velocity   # [A]
+            self._tau_acc_ff = self.ACC_FF_GAIN * self.servo.acceleration # [A]
+        else:
+            self._tau_backemf_ff = 0.0
+            self._tau_acc_ff = 0.0
+        self._tau_commanded = self._tau_external + self._tau_backemf_ff + self._tau_acc_ff
+        self.servo.set_tau_offset(self._tau_commanded)
+
     def _update_callback(self, timer_object):
         if self.run:
             # update kin
@@ -235,6 +263,7 @@ class CMBenchTop(Robot):
             self._update_acceleration()
             self._compute_transmission()
             self._update_K()
+            self._compute_feedforward()
 
 
 

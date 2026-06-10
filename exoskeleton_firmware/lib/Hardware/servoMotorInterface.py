@@ -1,5 +1,6 @@
 import pyb                                          # type: ignore
 
+import micropython                                   # type: ignore
 from micropython import const                       # type: ignore
 from lib.ll_common.const_dict import CONST_DICT as const_dict
 from lib.ll_common.novanta_constants import NovantaConstants as NOV
@@ -23,8 +24,12 @@ class ServoInterface: # servo constructor/decorator
         self.temperature =0
         self.counter_for_temp =0 # reading temp each instance can be heavy so one for sec
         self.run = False
+        self._busy = False
 
         self.reference_position = 0
+
+        # pre-allocate bound method to avoid heap allocation inside the ISR
+        self._servo_work_ref = self._servo_work
 
         # computation of the accelleration
         self.prev_vel = 0.0
@@ -242,8 +247,13 @@ class ServoInterface: # servo constructor/decorator
     def _set_pos_loop_set_point(self):
         self._servo.channel_pico.position_set_point = self.reference_position
 
-
     def _servo_callback(self, _):
+        if not self._busy:
+            self._busy = True
+            micropython.schedule(self._servo_work_ref, 0)
+
+    def _servo_work(self, _):
+        self._busy = False
         if self.run:
             self._servo.send_receive_cyclic()
             self._update_position()

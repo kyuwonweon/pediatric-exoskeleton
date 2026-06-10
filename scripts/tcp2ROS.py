@@ -47,7 +47,7 @@ class tcp2ROS(Node):
         self.dim_ctrl_fact_msg = 1
         self.dim_ctrl_msg = 10
         self.dim_dec_msg = 5
-        self.dim_robot_msg = 10
+        self.dim_robot_msg = 11
 
     def _log_stats(self):
         if self.packet_count > 0:
