@@ -1,0 +1,58 @@
+<mujoco model="hip_exo">
+  <compiler angle="radian"/>
+  <option timestep="0.001"/>
+
+  <default>
+    <geom contype="0" conaffinity="0" rgba="0.6 0.6 0.65 1"/>
+  </default>
+
+  <worldbody>
+    <light pos="0 0 3" dir="0 0 -1"/>
+    <geom type="plane" size="1 1 0.1" rgba="0.9 0.9 0.9 1"/>
+
+    <!-- Rotate frame for the myosuite frame/ rotate 90 degrees in x axis -->
+    <body name="exo_root" pos="0 0 1" quat="0.707107 0.707107 0 0">
+
+      <!-- hip frame (rigid body) -->
+      <body name="hip_frame" pos="0 0 0">
+        <inertial pos="-0.10 0 0" mass="0.8" diaginertia="0.005 0.005 0.005"/>
+        <geom name="frame_back" type="box" size="0.01 0.055 0.185" pos="-0.12 -0.05 0"/>
+        <!-- right side plate: 90 deg to back plate -->
+        <geom name="frame_side_r" type="box" size="0.103 0.055 0.005" pos="-0.0275 -0.05 0.19"/>
+        <!-- motor plate: connect sideplate and motor module -->
+        <geom name="frame_bracket_r" type="box" size="0.045 0.06 0.005" pos="-0.056 -0.185 0.19"/>
+
+        <!-- motor module: rigid to frame, mounted on the outside of the bracket,
+             motor axis = +z (lateral). Anatomical hip center is (-0.056 -0.078 0.077) -->
+        <body name="hip_module" pos="-0.056 -0.20 0.22">
+          <inertial pos="0 0 0" mass="0.6" diaginertia="0.0008 0.0008 0.0006"/>
+          <geom name="module_housing" type="cylinder" size="0.045 0.025" rgba="0.2 0.2 0.25 1"/>
+
+          <!-- upper linkage: driven by motor output (flexion/extension) -->
+          <body name="upper_link" pos="0 0 0.03">
+            <joint name="exo_hip_flex_r" type="hinge" axis="0 0 1"
+                   range="-0.6 2.0" armature="0.0" damping="0.0" frictionloss="0.0"/>
+            <inertial pos="0 -0.06 0" mass="0.15" diaginertia="0.0002 0.00002 0.0002"/>
+            <geom name="upper_link_geom" type="capsule" size="0.012" fromto="0 0 0  0 -0.12 0"/>
+
+            <!-- lower linkage: passive ab/adduction with torsion spring -->
+            <body name="lower_link" pos="0 -0.12 0">
+              <joint name="exo_abd_r" type="hinge" axis="1 0 0"
+                     range="-0.35 0.35" stiffness="5.0" springref="0" damping="0.05"/>
+              <inertial pos="0 -0.12 0" mass="0.2" diaginertia="0.0008 0.00003 0.0008"/>
+              <geom name="lower_link_geom" type="capsule" size="0.012" fromto="0 0 0  0 -0.22 0"/>
+              <geom name="thigh_cuff" type="box" size="0.04 0.03 0.01" pos="0 -0.22 -0.01"
+                    rgba="0.3 0.5 0.8 1"/>
+              <site name="cuff_site" pos="0 -0.22 -0.02" size="0.01"/>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <motor name="exo_hip_motor_r" joint="exo_hip_flex_r" gear="1"
+           ctrlrange="-20 20" ctrllimited="true"/>
+  </actuator>
+</mujoco>
