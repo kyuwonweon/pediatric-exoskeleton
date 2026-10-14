@@ -1,0 +1,7 @@
+# Request a shared locomotion activity without changing this motor's enable flag.
+int32 activity
+int32 starting_state
+---
+# Success means the complete profile was acknowledged, not physically completed.
+bool success
+string message

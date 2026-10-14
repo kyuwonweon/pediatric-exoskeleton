@@ -1,0 +1,63 @@
+# Default per-(activity, phase) SM params, loaded by ROS2tcp.py
+# (ctrl:=SMMultipleAct) at startup and pushed into the GuiSMMultiAct.cfg GUI
+# for whichever activity+phase pair is selected. All 5 activities start out
+# identical to GuiSMMultiAct.cfg's own defaults -- these are placeholders,
+# not tuned values. Use the SaveSMParams/LoadSMParams rosservices (or the
+# save_now/load_now checkboxes in rqt_reconfigure) to snapshot real tuned
+# values under sm_multi_act_params/saved/<name>.yaml without overwriting
+# this file.
+#
+# NOTE: every activity/phase block below is fully independent (deliberately
+# not using YAML anchors/aliases) -- aliasing would make yaml.safe_load
+# return the SAME dict object for multiple blocks, so tuning one would
+# silently mutate the others.
+
+OW:
+  vel_tresh: 10.0
+  Fz_tresh: 10.0
+  thigh_tresh: 20.0
+  phases:
+    EarlyStance: {q_eq: 0.0, qdot_eq: 0.0, dt: 1.0, K: 0.1, B: 0.01}
+    LateStance: {q_eq: 0.0, qdot_eq: 0.0, dt: 1.0, K: 0.1, B: 0.01}
+    EarlySwing: {q_eq: 50.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+    LateSwing: {q_eq: 0.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+
+StairsAsc:
+  vel_tresh: 10.0
+  Fz_tresh: 10.0
+  thigh_tresh: 20.0
+  phases:
+    EarlyStance: {q_eq: 0.0, qdot_eq: 0.0, dt: 1.0, K: 0.1, B: 0.01}
+    LateStance: {q_eq: 0.0, qdot_eq: 0.0, dt: 1.0, K: 0.1, B: 0.01}
+    EarlySwing: {q_eq: 50.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+    LateSwing: {q_eq: 0.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+
+StairsDesc:
+  vel_tresh: 10.0
+  Fz_tresh: 10.0
+  thigh_tresh: 20.0
+  phases:
+    EarlyStance: {q_eq: 0.0, qdot_eq: 0.0, dt: 1.0, K: 0.1, B: 0.01}
+    LateStance: {q_eq: 0.0, qdot_eq: 0.0, dt: 1.0, K: 0.1, B: 0.01}
+    EarlySwing: {q_eq: 50.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+    LateSwing: {q_eq: 0.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+
+RampAsc:
+  vel_tresh: 10.0
+  Fz_tresh: 10.0
+  thigh_tresh: 20.0
+  phases:
+    EarlyStance: {q_eq: 0.0, qdot_eq: 0.0, dt: 1.0, K: 0.1, B: 0.01}
+    LateStance: {q_eq: 0.0, qdot_eq: 0.0, dt: 1.0, K: 0.1, B: 0.01}
+    EarlySwing: {q_eq: 50.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+    LateSwing: {q_eq: 0.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+
+RampDesc:
+  vel_tresh: 10.0
+  Fz_tresh: 10.0
+  thigh_tresh: 20.0
+  phases:
+    EarlyStance: {q_eq: 0.0, qdot_eq: 0.0, dt: 1.0, K: 0.1, B: 0.01}
+    LateStance: {q_eq: 0.0, qdot_eq: 0.0, dt: 1.0, K: 0.1, B: 0.01}
+    EarlySwing: {q_eq: 50.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+    LateSwing: {q_eq: 0.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}

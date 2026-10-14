@@ -1,0 +1,42 @@
+# Bench placeholders, NOT validated terrain-specific locomotion parameters.
+# All activities initially reproduce the same Extension/Flexion cycle.
+# Do not load Fox four-phase snapshots into this controller.
+schema_version: 2
+controller: CubeMarsSMMultipleAct
+activities:
+  OW:
+    vel_tresh: 10.0
+    Fz_tresh: 10.0
+    phases:
+      Extension: {q_eq: 60.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+      Flexion: {q_eq: 120.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+  StairsAsc:
+    vel_tresh: 10.0
+    Fz_tresh: 10.0
+    phases:
+      Extension: {q_eq: 60.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+      Flexion: {q_eq: 120.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+  StairsDesc:
+    vel_tresh: 10.0
+    Fz_tresh: 10.0
+    phases:
+      Extension: {q_eq: 60.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+      Flexion: {q_eq: 120.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+  RampAsc:
+    vel_tresh: 10.0
+    Fz_tresh: 10.0
+    phases:
+      Extension: {q_eq: 60.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+      Flexion: {q_eq: 120.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+  RampDesc:
+    vel_tresh: 10.0
+    Fz_tresh: 10.0
+    phases:
+      Extension: {q_eq: 60.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+      Flexion: {q_eq: 120.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+  StS:
+    vel_tresh: 10.0
+    Fz_tresh: 10.0
+    phases:
+      Extension: {q_eq: 60.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
+      Flexion: {q_eq: 120.0, qdot_eq: 0.0, dt: 2.0, K: 0.1, B: 0.01}
