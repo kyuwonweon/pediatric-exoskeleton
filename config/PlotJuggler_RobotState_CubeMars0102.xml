@@ -1,0 +1,112 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- PlotJuggler port of multiplot/robot_state_CubeMars0102.xml (rqt_multiplot is ROS1-only).
+     Left column CM1 (id1), right column CM2 (id2). Rows: joint pos data[1] + incr-encoder pos data[6],
+     vel data[2], acc data[3], current data[8], temperature data[9]. -->
+<root>
+ <tabbed_widget parent="main_window" name="Main Window">
+  <Tab tab_name="CubeMars 01+02" containers="1">
+   <Container>
+    <DockSplitter count="5" sizes="0.2;0.2;0.2;0.2;0.2" orientation="-">
+     <DockSplitter count="2" sizes="0.5;0.5" orientation="|">
+      <DockArea name="CM1 data[1,6]">
+       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
+        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+        <limitY/>
+        <curve name="/robot_state_CubeMars_id1/data[1]" color="#1f77b4"/>
+        <curve name="/robot_state_CubeMars_id1/data[6]" color="#d62728"/>
+       </plot>
+      </DockArea>
+      <DockArea name="CM2 data[1,6]">
+       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
+        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+        <limitY/>
+        <curve name="/robot_state_CubeMars_id2/data[1]" color="#1f77b4"/>
+        <curve name="/robot_state_CubeMars_id2/data[6]" color="#d62728"/>
+       </plot>
+      </DockArea>
+     </DockSplitter>
+     <DockSplitter count="2" sizes="0.5;0.5" orientation="|">
+      <DockArea name="CM1 data[2]">
+       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
+        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+        <limitY/>
+        <curve name="/robot_state_CubeMars_id1/data[2]" color="#1f77b4"/>
+       </plot>
+      </DockArea>
+      <DockArea name="CM2 data[2]">
+       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
+        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+        <limitY/>
+        <curve name="/robot_state_CubeMars_id2/data[2]" color="#1f77b4"/>
+       </plot>
+      </DockArea>
+     </DockSplitter>
+     <DockSplitter count="2" sizes="0.5;0.5" orientation="|">
+      <DockArea name="CM1 data[3]">
+       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
+        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+        <limitY/>
+        <curve name="/robot_state_CubeMars_id1/data[3]" color="#1f77b4"/>
+       </plot>
+      </DockArea>
+      <DockArea name="CM2 data[3]">
+       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
+        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+        <limitY/>
+        <curve name="/robot_state_CubeMars_id2/data[3]" color="#1f77b4"/>
+       </plot>
+      </DockArea>
+     </DockSplitter>
+     <DockSplitter count="2" sizes="0.5;0.5" orientation="|">
+      <DockArea name="CM1 data[8]">
+       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
+        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+        <limitY/>
+        <curve name="/robot_state_CubeMars_id1/data[8]" color="#1f77b4"/>
+       </plot>
+      </DockArea>
+      <DockArea name="CM2 data[8]">
+       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
+        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+        <limitY/>
+        <curve name="/robot_state_CubeMars_id2/data[8]" color="#1f77b4"/>
+       </plot>
+      </DockArea>
+     </DockSplitter>
+     <DockSplitter count="2" sizes="0.5;0.5" orientation="|">
+      <DockArea name="CM1 data[9]">
+       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
+        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+        <limitY/>
+        <curve name="/robot_state_CubeMars_id1/data[9]" color="#1f77b4"/>
+       </plot>
+      </DockArea>
+      <DockArea name="CM2 data[9]">
+       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
+        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+        <limitY/>
+        <curve name="/robot_state_CubeMars_id2/data[9]" color="#1f77b4"/>
+       </plot>
+      </DockArea>
+     </DockSplitter>
+    </DockSplitter>
+   </Container>
+  </Tab>
+  <currentTabIndex index="0"/>
+ </tabbed_widget>
+ <use_relative_time_offset enabled="1"/>
+ <Plugins>
+  <plugin ID="ROS2 Topic Subscriber">
+   <use_header_stamp value="false"/>
+   <discard_large_arrays value="true"/>
+   <max_array_size value="100"/>
+   <boolean_strings_to_number value="true"/>
+   <remove_suffix_from_strings value="true"/>
+   <selected_topics value="/robot_state_CubeMars_id1;/robot_state_CubeMars_id2;/ctrl_state_CubeMars_id1;/ctrl_state_CubeMars_id2"/>
+  </plugin>
+ </Plugins>
+ <previouslyLoaded_Datafiles/>
+ <previouslyLoaded_Streamer name="ROS2 Topic Subscriber"/>
+ <customMathEquations/>
+ <snippets/>
+</root>
