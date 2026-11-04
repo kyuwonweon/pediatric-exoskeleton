@@ -23,37 +23,42 @@ class GaitModel:
         self.poly_degree = poly_degree
         self.weights = None
 
-    def basis(self, phase, stride_length, incline, d_phase: bool = False) -> np.ndarray:
+    def basis(self, phase, stride_length, incline,
+              d_phase: int = 0, d_stride: int = 0, d_incline: int = 0) -> np.ndarray:
         """Build the matrix of shapes: one row per sample, one column per shape.
 
         Columns = every wave times every task term:
             waves      : 1, cos(2*pi*k*phase), sin(2*pi*k*phase) for k = 1..n_harmonics
             task terms : 1, stride, incline (poly_degree 1), plus stride^2, stride*incline, incline^2 (degree 2)
-        d_phase=True gives the slope of every shape with respect to phase instead (same weights apply).
+        d_phase / d_stride / d_incline = n gives the n-th slope of every shape with respect to that input
+        instead (same weights apply). d_phase can be 0, 1 or 2; d_stride and d_incline 0 or 1.
         """
         # Accept single numbers or arrays, and make them the same length.
         phase, stride_length, incline = np.broadcast_arrays(
             np.atleast_1d(phase), np.atleast_1d(stride_length), np.atleast_1d(incline))
 
         # Step 1: waves from phase -> (n_samples, 2 * n_harmonics + 1)
-        # Slopes: the constant 1 is flat (0); d/dphase cos(2*pi*k*phase) = -2*pi*k * sin(...),
-        # d/dphase sin(2*pi*k*phase) = +2*pi*k * cos(...).
-        waves = [np.zeros_like(phase) if d_phase else np.ones_like(phase)]
+        # Slopes: the constant 1 is flat (0). Each slope of cos/sin multiplies by 2*pi*k and shifts the
+        # wave a quarter turn: cos -> -sin -> -cos, sin -> cos -> -sin.
+        waves = [np.ones_like(phase) if d_phase == 0 else np.zeros_like(phase)]
         for k in range(1, self.n_harmonics + 1):
             w = 2 * np.pi * k
-            if d_phase:
-                waves.append(-w * np.sin(w * phase))
-                waves.append(w * np.cos(w * phase))
-            else:
-                waves.append(np.cos(w * phase))
-                waves.append(np.sin(w * phase))
+            shift = d_phase * np.pi / 2
+            waves.append(w ** d_phase * np.cos(w * phase + shift))
+            waves.append(w ** d_phase * np.sin(w * phase + shift))
         waves = np.stack(waves, axis=1)
 
         # Step 2: task terms from stride length and incline -> (n_samples, n_task)
-        task = [np.ones_like(phase)]
+        # Each term is stride^a * incline^b; its slope with respect to stride is a * stride^(a-1) * incline^b.
+        task = [np.ones_like(phase) if d_stride == 0 and d_incline == 0 else np.zeros_like(phase)]
         for degree in range(1, self.poly_degree + 1):
-            for i in range(degree + 1):  # stride^(degree-i) * incline^i
-                task.append(stride_length ** (degree - i) * incline ** i)
+            for i in range(degree + 1):
+                a, b, coef = degree - i, i, 1.0  # stride^a * incline^b
+                if d_stride:
+                    coef, a = coef * a, a - 1
+                if d_incline:
+                    coef, b = coef * b, b - 1
+                task.append(coef * stride_length ** max(a, 0) * incline ** max(b, 0))
         task = np.stack(task, axis=1)
 
         # Step 3: every wave times every task term, laid out in one row per sample.
@@ -77,7 +82,11 @@ class GaitModel:
 
     def predict_dphase(self, phase, stride_length, incline) -> np.ndarray:
         """How fast the angle changes with phase (deg per stride)."""
-        return self.basis(phase, stride_length, incline, d_phase=True) @ self.weights
+        return self.predict_slope(phase, stride_length, incline, d_phase=1)
+
+    def predict_slope(self, phase, stride_length, incline, d_phase=0, d_stride=0, d_incline=0) -> np.ndarray:
+        """Any slope of the angle, e.g. d_stride=1: deg per meter of stride. The EKF Jacobian uses these."""
+        return self.basis(phase, stride_length, incline, d_phase, d_stride, d_incline) @ self.weights
 
     def save(self, path) -> None:
         """Write settings and weights as JSON: plain text that MicroPython on the board can read too."""
