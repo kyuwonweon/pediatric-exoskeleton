@@ -151,7 +151,7 @@ def changing_walk(strides: Strides, subject: str, conditions, strides_each: int 
 
 
 Q_DEFAULT = np.diag([1e-6, 1e-5, 1e-5, 1e-2])  # picked by the Q sweep (changing + steady walks)
-R_DEFAULT = np.diag([2.0 ** 2, 20.0 ** 2])
+R_DEFAULT = np.diag([4.5 ** 2, 30.0 ** 2])  # = model-vs-new-person error (4.4 deg, 28 deg/s), measured leave-one-out
 PLOT_DIR = Path(__file__).parent.parent / "plots"
 
 if __name__ == "__main__":

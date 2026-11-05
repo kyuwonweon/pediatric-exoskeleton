@@ -1,7 +1,7 @@
 """Create a gait model with curve fitting(least squares)
 
 Input : phase, stride length, incline
-Output: Thigh angle
+Output: Thigh angle (the default), or any other per-stride signal such as hip torque (signal="torque")
 """
 
 import json
@@ -64,13 +64,15 @@ class GaitModel:
         # Step 3: every wave times every task term, laid out in one row per sample.
         return (waves[:, :, None] * task[:, None, :]).reshape(len(phase), -1)
 
-    def fit(self, strides: Strides) -> "GaitModel":
-        """Least squares: find the weights that best reproduce every stride in the data."""
-        n_strides, n_points = strides.thigh.shape
+    def fit(self, strides: Strides, signal: str = "thigh") -> "GaitModel":
+        """Least squares: find the weights that best reproduce every stride in the data.
+        signal: which curve to learn, "thigh" (deg) or "torque" (Nm/kg). Same recipe for both."""
+        curves = getattr(strides, signal)
+        n_strides, n_points = curves.shape
         phase = np.tile(PHASE, n_strides)
         stride_length = np.repeat(strides.stride_length, n_points)
         incline = np.repeat(strides.incline, n_points)
-        y = strides.thigh.reshape(-1)
+        y = curves.reshape(-1)
 
         A = self.basis(phase, stride_length, incline)
         self.weights, *_ = np.linalg.lstsq(A.T @ A, A.T @ y, rcond=None)
@@ -102,23 +104,24 @@ class GaitModel:
         return model
 
 
-def evaluate(model: GaitModel, strides: Strides) -> float:
-    """RMSE (deg) between the model and the strides. Run it on subjects NOT used for fitting."""
-    n_strides, n_points = strides.thigh.shape
+def evaluate(model: GaitModel, strides: Strides, signal: str = "thigh") -> float:
+    """RMSE between the model and the strides (deg, or Nm/kg for torque). Run it on subjects NOT used for fitting."""
+    curves = getattr(strides, signal)
+    n_strides, n_points = curves.shape
     pred = model.predict(np.tile(PHASE, n_strides),
                          np.repeat(strides.stride_length, n_points),
                          np.repeat(strides.incline, n_points))
-    return float(np.sqrt(np.mean((pred - strides.thigh.reshape(-1)) ** 2)))
+    return float(np.sqrt(np.mean((pred - curves.reshape(-1)) ** 2)))
 
 
-def leave_one_subject_out(strides: Strides, **model_settings) -> float:
+def leave_one_subject_out(strides: Strides, signal: str = "thigh", **model_settings) -> float:
     """Fit on 9 subjects, test on the 10th, repeat for each subject; return the average test RMSE.
     This is how well the model should do on a new person, like you."""
     errors = []
     for subject in np.unique(strides.subject):
         test = strides.subject == subject
-        model = GaitModel(**model_settings).fit(strides.select(~test))
-        errors.append(evaluate(model, strides.select(test)))
+        model = GaitModel(**model_settings).fit(strides.select(~test), signal)
+        errors.append(evaluate(model, strides.select(test), signal))
     return float(np.mean(errors))
 
 
