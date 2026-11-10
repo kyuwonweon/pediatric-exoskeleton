@@ -4,7 +4,7 @@ Run from kinematic_control/:  python -m tests.test_ekf   (or pytest, if installe
 """
 import numpy as np
 
-from kinematic_control.ekf import PhaseEKF
+from kinematic_control.estimation.ekf import PhaseEKF
 from kinematic_control.gait_model import MODEL_PATH, GaitModel
 
 DT = 0.02  # 50 Hz, like the exo

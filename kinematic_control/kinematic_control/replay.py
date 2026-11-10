@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from kinematic_control.data_loader import PHASE, Strides
-from kinematic_control.ekf import PhaseEKF
+from kinematic_control.estimation.ekf import PhaseEKF
 from kinematic_control.gait_model import GaitModel
 
 DT = 0.02  # 50 Hz, like the exo
