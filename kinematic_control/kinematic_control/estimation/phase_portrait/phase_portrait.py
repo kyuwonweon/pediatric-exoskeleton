@@ -99,14 +99,18 @@ class RunningStats:
 class PhasePortrait:
     def __init__(self, dt: float = 0.02, window: int = 6, degree: int = 2,
                  y_signal: str = "integral", leg_sign: int = +1,
-                 max_still_s: float = 1.5, resume_tol: float = 0.3, lookup=None):
+                 max_still_s: float = 1.5, still_s: float = 0.4, still_frac: float = 0.12,
+                 resume_tol: float = 0.3, lookup=None):
         """dt: time between ticks (s); 0.02 = 50 Hz like the exo
         window: how many past angles the smoother fits (6 = 0.12 s). Bigger = smoother, more delay
         degree: polynomial degree for the smoother
         y_signal: "integral" (default, better) or "velocity" (the CCTA 2017 paper)
         leg_sign: +1 if the angle is already + = flexion (dataset frame). -1 flips x, for a sensor
                   mounted mirrored (the paper's left leg). Better: convert upstream and keep +1.
-        max_still_s: no thigh peak/valley for this long = not walking
+        max_still_s: no thigh peak/valley for this long = not walking (slow backup check)
+        still_s, still_frac: thigh angle stayed within still_frac x last stride's swing for the
+                  last still_s = not walking (fast check). Swept on Reznick walks: 0.4 s / 12 %
+                  -> ~0.06 % false stops while walking, stop caught ~0.26 s after the thigh rests.
         resume_tol: after a stop, phase stays held until the live phase is this close to it
         lookup: table that correlates and tells the gait phase based on the phi angle from the circle
         """
@@ -116,6 +120,8 @@ class PhasePortrait:
         self.y_signal = y_signal
         self.leg_sign = leg_sign
         self.max_still_ticks = int(max_still_s / dt)
+        self.recent = deque(maxlen=int(still_s / dt))   # last still_s of smoothed angles
+        self.still_frac = still_frac
         self.resume_tol = resume_tol
         self.lookup = lookup
 
@@ -178,8 +184,16 @@ class PhasePortrait:
         """phi = atan2(y, x), wrapped into [0, 2*pi). Starts at max thigh flexion, not heel strike."""
         return float(wrap(np.arctan2(y, x)))
 
-    def is_stopped(self) -> bool:
-        return self.peaks.ticks_since_turn > self.max_still_ticks
+    def is_stopped(self, theta: float) -> bool:
+        """Stopped if the thigh angle has stayed inside a small band for the last still_s (fast:
+        band = still_frac x last stride's swing, ~5 deg), or hasn't turned around for max_still_s
+        (backup). Uses the angle, not velocity: velocity amplifies sensor noise (0.5 deg of angle
+        noise gave 15-33 deg/s of velocity jitter while standing, so a velocity test never fired)."""
+        self.recent.append(theta)
+        full = len(self.recent) == self.recent.maxlen
+        still = full and (max(self.recent) - min(self.recent)) < self.still_frac * self.stride_size
+        stale = self.peaks.ticks_since_turn > self.max_still_ticks
+        return still or stale
 
     def hold(self, phi: float, stopped: bool) -> float:
         """Return the phase to output."""
@@ -211,7 +225,7 @@ class PhasePortrait:
         if not self.ready:
             return None
         self.x, self.y = self.normalize(theta, y)
-        self.stopped = self.is_stopped()
+        self.stopped = self.is_stopped(theta)
         self.phi = self.hold(self.raw_phase(self.x, self.y), self.stopped)
         return self.to_gait_phase(self.phi)
 
