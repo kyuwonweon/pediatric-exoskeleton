@@ -2,10 +2,30 @@
 import numpy as np
 import pytest
 
-from kinematic_control.frames import LegFrame, load_frames, measure_sign, measure_zero, save_frames
+from kinematic_control.frames import (LegFrame, check_board_frame, load_frames, measure_sign, measure_zero,
+                                     save_frames)
 
 
-def test_standing_is_zero_and_flexion_is_positive_on_both_legs():
+def test_default_trusts_the_board():
+    # New board frame (2026-11-12): board already reports 0 = standing, + = flexion.
+    f = LegFrame("right")
+    assert f.hip_angle(25.0) == 25 and f.hip_velocity(-80.0) == -80 and f.joint_torque(1.5) == 1.5
+
+
+def test_small_zero_correction():
+    f = LegFrame("left", zero=2.0)          # standing reads 2 deg today (straps/posture)
+    assert f.hip_angle(2.0) == 0 and f.hip_angle(32.0) == 30
+    check_board_frame(f)                    # small offset is fine
+
+
+def test_check_board_frame_refuses_bad_params():
+    with pytest.raises(ValueError):
+        check_board_frame(LegFrame("right", zero=0.0, sign=-1))   # joint_direction wrong
+    with pytest.raises(ValueError):
+        check_board_frame(LegFrame("left", zero=35.0))            # joint_zero_deg wrong
+
+
+def test_old_style_frame_conversion_still_works():
     # Like the bench: left angle goes up with flexion, right goes down, frames ~35 deg apart.
     left = LegFrame("left", zero=80.0, sign=+1)
     right = LegFrame("right", zero=45.0, sign=-1)

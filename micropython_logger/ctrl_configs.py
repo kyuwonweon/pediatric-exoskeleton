@@ -178,6 +178,12 @@ GuiTeleopCAN = [
     ParamSpec('B_damping', 'double', 0.1, 0.0, 0.2, 'A double parameter representing damping controller'),
 ]
 
+GuiPhaseTorque = [
+    ParamSpec('enable_controller', 'bool', False, None, None, 'Enable: board applies the torque streamed by kinematic_control phase_controller_node (K=B=0)'),
+    ParamSpec('max_torque_Nm', 'double', 1.0, 0.1, 2.0, 'Board-side torque cap (Nm)'),
+    ParamSpec('rx_timeout_ms', 'double', 100.0, 20.0, 500.0, 'Board applies 0 Nm if no torque frame for this long (ms)'),
+]
+
 GuiCANMotorGroup = [
     ParamSpec('enable_controller', 'bool', False, None, None, 'Enable all selected motor controllers after readiness checks; uncheck to disable'),
 ]

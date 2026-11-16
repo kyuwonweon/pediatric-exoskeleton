@@ -88,6 +88,7 @@ class ROS2canIP(Node):
         "FF": (1, "GuiFFCalConfig", 20),
         "FB": (2, "GuiFBTranspConfig", 20),
         "TeleopCAN": (7, "GuiTeleopCANConfig", 20),
+        "PhaseTorque": (10, "GuiPhaseTorqueConfig", 20),  # board ctrlPhaseTorque; torque streamed by phase_controller_node
     }
 
     def __init__(self):

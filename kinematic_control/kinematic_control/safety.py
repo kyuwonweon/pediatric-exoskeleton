@@ -42,7 +42,7 @@ LEG_MOTOR = {"left": 1, "right": 2}  # id1 = LEFT, id2 = RIGHT (bench, 2026-10-2
 
 # Per-leg limits (hip angle, anatomical frame: 0 = standing upright, + = flexion).
 LEG_LIMITS = {
-    "left": Limits(flex_limit=70, ext_limit=-20),
+    "left": Limits(flex_limit=50, ext_limit=-20),
     "right": Limits(flex_limit=60, ext_limit=-15),
 }
 

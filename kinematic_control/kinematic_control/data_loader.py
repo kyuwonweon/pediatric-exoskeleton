@@ -18,7 +18,7 @@ What we want out: one row per stride, so the gait model can be fit with plain le
 from dataclasses import dataclass
 from pathlib import Path
 
-import h5py
+
 import numpy as np
 
 DEFAULT_PATH = Path.home() / "Desktop/projects/final/data/reznick/Normalized.mat"
@@ -59,6 +59,7 @@ def parse_incline(key: str) -> float:
 def load_walking(path: Path = DEFAULT_PATH) -> Strides:
     """Read every steady walking stride of every subject into one Strides object."""
     cols = {name: [] for name in Strides.__dataclass_fields__}
+    import h5py  # only needed to read the dataset; the live ROS node (system python) has no h5py
     with h5py.File(path, "r") as f:
         root = f["Normalized"]
         for subject in root:

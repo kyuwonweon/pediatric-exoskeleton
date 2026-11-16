@@ -1,16 +1,20 @@
 """Board joint angle -> anatomical hip angle, per leg.
 
-The boards report a "joint angle" (robotCMBenchTop._servo_to_joint_angle):
+Since 2026-11-12 the boards already report the anatomical frame (params.json "Hip convention"):
     board = wrap(joint_direction * (servo - joint_zero_deg))
-but that frame is not anatomical (full extension reads ~19.9 deg, not 0) and the two legs are
-~35 deg apart on the bench. We don't change the boards; we convert on our side:
+    0 = thigh vertical in aligned upright standing, + = flexion (thigh forward), deg.
+Velocity uses the same direction, and robot.set_tau_offset() applies joint_direction to torque,
+so a + torque we send is flexion on both legs. Nothing on our side flips signs any more.
+
+What is left here is a small per-session correction and a check:
 
     hip = wrap(sign * (board - zero))
 
-    zero: the board angle while you stand still and upright (measured each session, per leg)
-    sign: +1 if the board angle goes UP when the thigh flexes (forward), -1 if it goes down
+    zero: the board angle while you stand still and upright, measured each session. It should be
+          within a few degrees of 0 (straps, posture); a big value means params.json is off.
+    sign: should come out +1 on both legs; -1 means joint_direction in params.json is wrong.
 
-Result, same meaning on both legs: 0 = standing upright, + = flexion (thigh forward), deg.
+The defaults (zero=0, sign=+1) trust the board as is.
 This is what safety.LEG_LIMITS and the estimators expect.
 """
 import json
@@ -28,8 +32,8 @@ def wrap(angle):
 @dataclass
 class LegFrame:
     leg: str            # "left" or "right"
-    zero: float         # board angle while standing upright (deg)
-    sign: int = +1      # +1: board angle increases with flexion; -1: it decreases
+    zero: float = 0.0   # board angle while standing upright (deg); ~0 with the new board frame
+    sign: int = +1      # +1: board angle increases with flexion (expected); -1: it decreases
 
     def hip_angle(self, board_angle):
         """Board joint angle (deg) -> anatomical hip angle (deg, 0 = standing, + = flexion)."""
@@ -40,8 +44,8 @@ class LegFrame:
         return self.sign * np.asarray(board_velocity)
 
     def joint_torque(self, hip_torque):
-        """Anatomical torque (Nm, + = flexion) -> board joint torque (the board's own sign).
-        Same sign rule as the angle: if the board's angle runs backward, so does its torque."""
+        """Anatomical torque (Nm, + = flexion) -> torque to send to the board.
+        The board applies joint_direction itself, so with sign=+1 this is unchanged."""
         return self.sign * np.asarray(hip_torque)
 
 
@@ -68,6 +72,15 @@ def measure_sign(board_angles_during_flex, min_change_deg: float = 10.0) -> int:
     if abs(change) < min_change_deg:
         raise ValueError(f"only {change:+.1f} deg of motion; flex the thigh at least {min_change_deg} deg")
     return 1 if change > 0 else -1
+
+
+def check_board_frame(frame: LegFrame, max_zero_deg: float = 10.0) -> None:
+    """After calibrating: refuse to run if the board's own frame looks wrong.
+    A wrong sign would flip the torque direction, so we stop instead of silently fixing it."""
+    if frame.sign != +1:
+        raise ValueError(f"{frame.leg}: board angle goes DOWN with flexion; fix joint_direction in params.json")
+    if abs(frame.zero) > max_zero_deg:
+        raise ValueError(f"{frame.leg}: standing reads {frame.zero:+.1f} deg (expected ~0); check joint_zero_deg in params.json")
 
 
 # ---- Save / load one session's calibration -----------------------------------------------------

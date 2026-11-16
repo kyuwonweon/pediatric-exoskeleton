@@ -1,91 +1,92 @@
 <?xml version='1.0' encoding='UTF-8'?>
-<!-- PlotJuggler port of multiplot/robot_state_CubeMars0102.xml (rqt_multiplot is ROS1-only).
-     Left column CM1 (id1), right column CM2 (id2). Rows: joint pos data[1] + incr-encoder pos data[6],
-     vel data[2], acc data[3], current data[8], temperature data[9]. -->
 <root>
- <tabbed_widget parent="main_window" name="Main Window">
-  <Tab tab_name="CubeMars 01+02" containers="1">
+ <tabbed_widget name="Main Window" parent="main_window">
+  <Tab containers="1" tab_name="CubeMars 01+02">
    <Container>
-    <DockSplitter count="5" sizes="0.2;0.2;0.2;0.2;0.2" orientation="-">
-     <DockSplitter count="2" sizes="0.5;0.5" orientation="|">
+    <DockSplitter count="5" orientation="-" sizes="0.200225;0.1991;0.20135;0.1991;0.200225">
+     <DockSplitter count="2" orientation="|" sizes="0.5;0.5">
       <DockArea name="CM1 data[1,6]">
-       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
-        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+       <plot flip_x="false" flip_y="false" line_width="1.0" mode="TimeSeries">
+        <range bottom="-13.360413" left="88.879475" right="93.883766" top="-13.268127"/>
         <limitY/>
-        <curve name="/robot_state_CubeMars_id1/data[1]" color="#1f77b4"/>
-        <curve name="/robot_state_CubeMars_id1/data[6]" color="#d62728"/>
+        <curve color="#1f77b4" name="/robot_state_CubeMars_id1/data[1]"/>
+        <curve color="#d62728" name="/robot_state_CubeMars_id1/data[6]"/>
        </plot>
       </DockArea>
       <DockArea name="CM2 data[1,6]">
-       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
-        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+       <plot flip_x="false" flip_y="false" line_width="1.0" mode="TimeSeries">
+        <range bottom="1.740875" left="88.879475" right="93.883766" top="1.833160"/>
         <limitY/>
-        <curve name="/robot_state_CubeMars_id2/data[1]" color="#1f77b4"/>
-        <curve name="/robot_state_CubeMars_id2/data[6]" color="#d62728"/>
+        <curve color="#1f77b4" name="/robot_state_CubeMars_id2/data[1]"/>
+        <curve color="#d62728" name="/robot_state_CubeMars_id2/data[6]"/>
        </plot>
       </DockArea>
      </DockSplitter>
-     <DockSplitter count="2" sizes="0.5;0.5" orientation="|">
+     <DockSplitter count="2" orientation="|" sizes="0.5;0.5">
       <DockArea name="CM1 data[2]">
-       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
-        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+       <plot flip_x="false" flip_y="false" line_width="1.0" mode="TimeSeries">
+        <range bottom="-30.626177" left="88.879475" right="93.883766" top="31.414866"/>
         <limitY/>
-        <curve name="/robot_state_CubeMars_id1/data[2]" color="#1f77b4"/>
+        <curve color="#1f77b4" name="/robot_state_CubeMars_id1/data[2]"/>
        </plot>
       </DockArea>
       <DockArea name="CM2 data[2]">
-       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
-        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+       <plot flip_x="false" flip_y="false" line_width="1.0" mode="TimeSeries">
+        <range bottom="-32.144511" left="88.879475" right="93.883766" top="32.335042"/>
         <limitY/>
-        <curve name="/robot_state_CubeMars_id2/data[2]" color="#1f77b4"/>
+        <curve color="#1f77b4" name="/robot_state_CubeMars_id2/data[2]"/>
        </plot>
       </DockArea>
      </DockSplitter>
-     <DockSplitter count="2" sizes="0.5;0.5" orientation="|">
+     <DockSplitter count="2" orientation="|" sizes="0.5;0.5">
       <DockArea name="CM1 data[3]">
-       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
-        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+       <plot flip_x="false" flip_y="false" line_width="1.0" mode="TimeSeries">
+        <range bottom="-463.784644" left="88.879475" right="93.883766" top="488.161353"/>
         <limitY/>
-        <curve name="/robot_state_CubeMars_id1/data[3]" color="#1f77b4"/>
+        <curve color="#1f77b4" name="/robot_state_CubeMars_id1/data[3]"/>
        </plot>
       </DockArea>
       <DockArea name="CM2 data[3]">
-       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
-        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+       <plot flip_x="false" flip_y="false" line_width="1.0" mode="TimeSeries">
+        <range bottom="-508.676879" left="88.879475" right="93.883766" top="517.874969"/>
         <limitY/>
-        <curve name="/robot_state_CubeMars_id2/data[3]" color="#1f77b4"/>
+        <curve color="#1f77b4" name="/robot_state_CubeMars_id2/data[3]"/>
        </plot>
       </DockArea>
      </DockSplitter>
-     <DockSplitter count="2" sizes="0.5;0.5" orientation="|">
+     <DockSplitter count="2" orientation="|" sizes="0.5;0.5">
       <DockArea name="CM1 data[8]">
-       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
-        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+       <plot flip_x="false" flip_y="false" line_width="1.0" mode="TimeSeries">
+        <range bottom="-0.061149" left="88.879475" right="93.883766" top="0.059271"/>
         <limitY/>
-        <curve name="/robot_state_CubeMars_id1/data[8]" color="#1f77b4"/>
+        <curve color="#1f77b4" name="/robot_state_CubeMars_id1/data[8]"/>
        </plot>
       </DockArea>
       <DockArea name="CM2 data[8]">
-       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
-        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+       <plot flip_x="false" flip_y="false" line_width="1.0" mode="TimeSeries">
+        <range bottom="-0.032307" left="88.879475" right="93.883766" top="0.039879"/>
         <limitY/>
-        <curve name="/robot_state_CubeMars_id2/data[8]" color="#1f77b4"/>
+        <curve color="#1f77b4" name="/robot_state_CubeMars_id2/data[8]"/>
        </plot>
       </DockArea>
      </DockSplitter>
-     <DockSplitter count="2" sizes="0.5;0.5" orientation="|">
+     <DockSplitter count="2" orientation="|" sizes="0.5;0.5">
       <DockArea name="CM1 data[9]">
-       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
-        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+       <plot flip_x="false" flip_y="false" line_width="1.0" mode="TimeSeries">
+        <range bottom="-3.848727" left="88.879475" right="93.883766" top="1.719510"/>
         <limitY/>
-        <curve name="/robot_state_CubeMars_id1/data[9]" color="#1f77b4"/>
+        <curve color="#1f77b4" name="/robot_state_CubeMars_id1/data[9]"/>
+        <curve color="#1f77b4" name="/robot_state_CubeMars_id1/data[4]"/>
+        <curve color="#d62728" name="/robot_state_CubeMars_id1/data[5]"/>
        </plot>
       </DockArea>
       <DockArea name="CM2 data[9]">
-       <plot flip_y="false" line_width="1.0" mode="TimeSeries" flip_x="false">
-        <range right="1.0" top="1.0" left="0.0" bottom="0.0"/>
+       <plot flip_x="false" flip_y="false" line_width="1.0" mode="TimeSeries">
+        <range bottom="-3.031421" left="88.879475" right="93.883766" top="1.989985"/>
         <limitY/>
-        <curve name="/robot_state_CubeMars_id2/data[9]" color="#1f77b4"/>
+        <curve color="#1f77b4" name="/robot_state_CubeMars_id2/data[9]"/>
+        <curve color="#1ac938" name="/robot_state_CubeMars_id2/data[4]"/>
+        <curve color="#ff7f0e" name="/robot_state_CubeMars_id2/data[5]"/>
        </plot>
       </DockArea>
      </DockSplitter>
@@ -95,18 +96,136 @@
   <currentTabIndex index="0"/>
  </tabbed_widget>
  <use_relative_time_offset enabled="1"/>
+ <streaming_buffer_size value="5"/>
+ <!-- - - - - - - - - - - - - - - -->
+ <!-- - - - - - - - - - - - - - - -->
  <Plugins>
+  <plugin ID="DataLoad CSV">
+   <parameters delimiter="0" skip_rows="0" time_axis=""/>
+  </plugin>
+  <plugin ID="DataLoad MCAP"/>
+  <plugin ID="DataLoad ROS2 bags">
+   <use_header_stamp value="false"/>
+   <discard_large_arrays value="true"/>
+   <max_array_size value="100"/>
+   <boolean_strings_to_number value="true"/>
+   <remove_suffix_from_strings value="true"/>
+   <selected_topics value="/robot_state_CubeMars"/>
+  </plugin>
+  <plugin ID="DataLoad ULog"/>
+  <plugin ID="Foxglove ROS2 Bridge">
+   <foxglove_client clamp_large_arrays="0" max_array_size="500" url="ws://127.0.0.1:8765" use_timestamp="0">
+    <topics/>
+   </foxglove_client>
+  </plugin>
+  <plugin ID="PlotJuggler Bridge">
+   <websocket_client clamp_large_arrays="0" max_array_size="500" url="ws://127.0.0.1:9090" use_timestamp="0">
+    <topics/>
+   </websocket_client>
+  </plugin>
   <plugin ID="ROS2 Topic Subscriber">
    <use_header_stamp value="false"/>
    <discard_large_arrays value="true"/>
    <max_array_size value="100"/>
    <boolean_strings_to_number value="true"/>
    <remove_suffix_from_strings value="true"/>
-   <selected_topics value="/robot_state_CubeMars_id1;/robot_state_CubeMars_id2;/ctrl_state_CubeMars_id1;/ctrl_state_CubeMars_id2"/>
+   <selected_topics value="/ctrl_state_CubeMars_id1;/ctrl_state_CubeMars_id2;/robot_state_CubeMars_id1;/robot_state_CubeMars_id2"/>
   </plugin>
+  <plugin ID="UDP Server"/>
+  <plugin ID="WebSocket Server"/>
+  <plugin ID="ZMQ Subscriber"/>
+  <plugin ID="CSV/Parquet Exporter"/>
+  <plugin ID="Fast Fourier Transform"/>
+  <plugin ID="Quaternion to RPY"/>
+  <plugin ID="Reactive Script Editor">
+   <library code="--[[ Helper function to create a series from arrays
+
+ new_series: a series previously created with ScatterXY.new(name)
+ prefix:     prefix of the timeseries, before the index of the array
+ suffix_X:   suffix to complete the name of the series containing the X value. If [nil], use the index of the array.
+ suffix_Y:   suffix to complete the name of the series containing the Y value
+ timestamp:   usually the tracker_time variable
+              
+ Example:
+ 
+ Assuming we have multiple series in the form:
+ 
+   /trajectory/node.{X}/position/x
+   /trajectory/node.{X}/position/y
+   
+ where {N} is the index of the array (integer). We can create a reactive series from the array with:
+ 
+   new_series = ScatterXY.new(&quot;my_trajectory&quot;) 
+   CreateSeriesFromArray( new_series, &quot;/trajectory/node&quot;, &quot;position/x&quot;, &quot;position/y&quot;, tracker_time );
+--]]
+
+function CreateSeriesFromArray( new_series, prefix, suffix_X, suffix_Y, timestamp )
+  
+  --- clear previous values
+  new_series:clear()
+  
+  --- Append points to new_series
+  index = 0
+  while(true) do
+
+    x = index;
+    -- if not nil, get the X coordinate from a series
+    if suffix_X ~= nil then 
+      series_x = TimeseriesView.find( string.format( &quot;%s.%d/%s&quot;, prefix, index, suffix_X) )
+      if series_x == nil then break end
+      x = series_x:atTime(timestamp)	 
+    end
+    
+    series_y = TimeseriesView.find( string.format( &quot;%s.%d/%s&quot;, prefix, index, suffix_Y) )
+    if series_y == nil then break end 
+    y = series_y:atTime(timestamp)
+    
+    new_series:push_back(x,y)
+    index = index+1
+  end
+end
+
+--[[ Similar to the built-in function GetSeriesNames(), but select only the names with a give prefix. --]]
+
+function GetSeriesNamesByPrefix(prefix)
+  -- GetSeriesNames(9 is a built-in function
+  all_names = GetSeriesNames()
+  filtered_names = {}
+  for i, name in ipairs(all_names)  do
+    -- check the prefix
+    if name:find(prefix, 1, #prefix) then
+      table.insert(filtered_names, name);
+    end
+  end
+  return filtered_names
+end
+
+--[[ Modify an existing series, applying offsets to all their X and Y values
+
+ series: an existing timeseries, obtained with TimeseriesView.find(name)
+ delta_x: offset to apply to each x value
+ delta_y: offset to apply to each y value 
+  
+--]]
+
+function ApplyOffsetInPlace(series, delta_x, delta_y)
+  -- use C++ indices, not Lua indices
+  for index=0, series:size()-1 do
+    x,y = series:at(index)
+    series:set(index, x + delta_x, y + delta_y)
+  end
+end
+"/>
+   <scripts/>
+  </plugin>
+  <plugin ID="ROS2 Topic Re-Publisher"/>
  </Plugins>
+ <!-- - - - - - - - - - - - - - - -->
  <previouslyLoaded_Datafiles/>
  <previouslyLoaded_Streamer name="ROS2 Topic Subscriber"/>
+ <!-- - - - - - - - - - - - - - - -->
  <customMathEquations/>
  <snippets/>
+ <colorMaps/>
+ <!-- - - - - - - - - - - - - - - -->
 </root>
