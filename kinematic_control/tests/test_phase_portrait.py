@@ -65,3 +65,13 @@ def test_stop_freezes_then_resumes():
     walking = np.array(walking)
     assert not walking[(t > 14.0) & (t < 16.0)].any()   # stopped is detected within 1.5 s
     assert walking[t > 20.0].all()                       # and walking resumes
+
+
+def test_resume_after_brief_stop_when_slightly_ahead():
+    """A false stop: phase held, live phase moves a little ahead -> resume at once, not a cycle later."""
+    pp = PhasePortrait(resume_tol=0.3, resume_ahead=0.8)
+    pp.last_phi = 1.0
+    assert pp.hold(1.0, stopped=True) == 1.0 and pp.held
+    assert pp.hold(1.5, stopped=False) == 1.5 and not pp.held     # 0.5 rad ahead: resume
+    pp.hold(1.5, stopped=True)
+    assert pp.hold(2.6, stopped=False) == 1.5 and pp.held         # 1.1 rad ahead: too far, wait

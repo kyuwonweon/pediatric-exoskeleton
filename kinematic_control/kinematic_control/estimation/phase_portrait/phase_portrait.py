@@ -16,6 +16,11 @@ TWO_PI = 2 * np.pi
 LOOKUP_PATH = Path(__file__).resolve().parents[2] / "models" / "phase_lookup.json"
 
 
+RESUME_AHEAD = 0.8   # rad (13 % of a cycle). Sweep 2026-11-18, 0.3 / 0.8 / 1.6 / 3.1:
+# bench hand swings assist-on 62 / 82 / 86 / 87 %; Reznick replay phase err 3.06 / 3.09 / 3.24 /
+# 3.58 %, wrong direction 0.03 / 0.04 / 0.25 / 0.35 %. Bigger = jumps further ahead on resume.
+
+
 def wrap(phi):
     """Any angle -> [0, 2pi)."""
     return phi % TWO_PI
@@ -100,7 +105,7 @@ class PhasePortrait:
     def __init__(self, dt: float = 0.02, window: int = 6, degree: int = 2,
                  y_signal: str = "integral", leg_sign: int = +1,
                  max_still_s: float = 1.5, still_s: float = 0.4, still_frac: float = 0.12,
-                 resume_tol: float = 0.3, lookup=None):
+                 resume_tol: float = 0.3, resume_ahead: float = RESUME_AHEAD, lookup=None):
         """dt: time between ticks (s); 0.02 = 50 Hz like the exo
         window: how many past angles the smoother fits (6 = 0.12 s). Bigger = smoother, more delay
         degree: polynomial degree for the smoother
@@ -111,7 +116,11 @@ class PhasePortrait:
         still_s, still_frac: thigh angle stayed within still_frac x last stride's swing for the
                   last still_s = not walking (fast check). Swept on Reznick walks: 0.4 s / 12 %
                   -> ~0.06 % false stops while walking, stop caught ~0.26 s after the thigh rests.
-        resume_tol: after a stop, phase stays held until the live phase is this close to it
+        resume_tol, resume_ahead (rad): after a stop, phase stays held until the live phase is
+                  between resume_tol behind and resume_ahead ahead of the held one. Only waiting
+                  for "close" (old behavior, resume_ahead = resume_tol) made a brief false stop
+                  cost almost a whole cycle: the live phase had already moved on (bench hand
+                  swings 2026-11-18: assist off ~40 % of the time from this wait alone).
         lookup: table that correlates and tells the gait phase based on the phi angle from the circle
         """
         if y_signal not in ("integral", "velocity"):
@@ -123,6 +132,7 @@ class PhasePortrait:
         self.recent = deque(maxlen=int(still_s / dt))   # last still_s of smoothed angles
         self.still_frac = still_frac
         self.resume_tol = resume_tol
+        self.resume_ahead = resume_ahead
         self.lookup = lookup
 
         self.angles = deque(maxlen=window)
@@ -203,7 +213,7 @@ class PhasePortrait:
         step = signed_diff(phi, self.last_phi)
         if stopped:
             self.held = True
-        elif self.held and abs(step) <= self.resume_tol:
+        elif self.held and -self.resume_tol <= step <= self.resume_ahead:
             self.held = False
         if not self.held and step > 0:
             self.last_phi = phi

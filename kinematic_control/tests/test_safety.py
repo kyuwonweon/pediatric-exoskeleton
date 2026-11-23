@@ -84,3 +84,32 @@ def test_nan_is_a_fault():
     s = Safety()
     s.enable()
     assert s.step(float("nan"), True, 10.0, 0.0) == 0.0 and s.fault == "non-finite input"
+
+
+def test_stop_fades_without_a_step():
+    s = Safety(Limits(fade_s=0.2, max_rate=1000.0))   # rate limit out of the way: test the fade itself
+    s.enable()
+    run(s, 200)                                      # at full torque (1 Nm)
+    out = run(s, 15, walking=False)
+    steps = np.abs(np.diff([1.0] + out))
+    assert steps.max() <= 0.1 + 1e-9                 # <= 10 % of the torque per tick
+    assert out[9] == 0.0                             # gone after fade_s
+
+
+def test_brief_stop_ramps_back_fast():
+    s = Safety(Limits(fade_s=0.2, soft_start_s=2.0))
+    s.enable()
+    run(s, 200)
+    run(s, 2, walking=False)                         # 0.04 s flicker: gain 1 -> 0.8
+    back = run(s, 3)
+    assert back[-1] == 1.0                           # back at the fade rate, not a 2 s soft start
+
+
+def test_rate_scales_with_peak():
+    from kinematic_control.safety import rate_for_peak
+    assert rate_for_peak(0.5) == 5.0                 # 0.1 Nm per 50 Hz tick
+    assert rate_for_peak(2.0) == 20.0
+    assert rate_for_peak(5.0) == 20.0                # never above the ceiling
+    s = make_leg_safety("left", DT, peak_Nm=0.5)
+    assert s.limits.max_rate == 5.0
+    assert make_leg_safety("left", DT).limits.max_rate == 20.0   # no peak -> unchanged

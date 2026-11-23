@@ -10,6 +10,8 @@ Published /phase_ctrl/<leg> (Float64MultiArray), one per board message:
     [5] safe torque     (after safety; what is sent when send is on)
     [6] fault (0/1)     [7] dropped ticks since the last message
     [8] sending (0/1)   (1 = a torque-on frame went to the board this tick)
+    [9] integral (raw)  [10] portrait x (normalized angle)  [11] portrait y (normalized integral)
+                        (plot [10] vs [11] as XY to see the phase portrait circle; NaN while warming up)
 """
 import math
 
@@ -34,7 +36,7 @@ class LegPipeline:
         check_board_frame(self.frame)                 # refuse to start with a wrong sign / zero
         self.tmap = tmap
         self.estimator = PhasePortrait(dt=DT, lookup=lookup)
-        self.safety = make_leg_safety(leg, DT)
+        self.safety = make_leg_safety(leg, DT, peak_Nm=tmap.peak_Nm)
         self.safety.enable()
         self.last_time = None
 
@@ -57,8 +59,13 @@ class LegPipeline:
         desired = self.tmap.command(phase, 0.0, STRIDE_M, INCLINE) if phase is not None else 0.0
         safe = self.safety.step(desired, walking, angle, velocity)
 
+        est = self.estimator
+        ready = phase is not None
         return [board_time, angle, math.nan if phase is None else phase, float(walking),
-                desired, safe, float(self.safety.fault is not None), float(dropped), 0.0]
+                desired, safe, float(self.safety.fault is not None), float(dropped), 0.0,
+                float(est.integral),                       # [9]  raw integral
+                float(est.x) if ready else math.nan,       # [10] portrait x (normalized angle)
+                float(est.y) if ready else math.nan]       # [11] portrait y (normalized integral)
 
     def reset(self) -> None:
         """Clear a latched fault and allow torque again (soft start applies)."""
@@ -70,6 +77,7 @@ class LegPipeline:
         to whatever the compute-only torque was."""
         self.safety.gain = 0.0
         self.safety.last_torque = 0.0
+        self.safety.ramping_in = True
 
 
 def main():

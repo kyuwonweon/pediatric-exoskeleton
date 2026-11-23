@@ -11,14 +11,16 @@ Output (every tick): safe torque (Nm, + = flexion). frames.LegFrame.joint_torque
 Layers inside step(), in order:
     1 faults  -> latch OFF: torque 0 at once, stays 0 until reset()
     2 gate    -> 0 unless enabled and walking
-    3 soft start -> gain ramps 0->1 over soft_start_s once allowed; back to 0 when not
+    3 soft start / fade -> gain ramps 0->1 over soft_start_s from a full stop; when not allowed
+                 it fades 1->0 over fade_s (the held torque x gain, so no step); a brief stop
+                 (gain never reached 0) ramps back at the fade rate instead of a full soft start
     4 angle limits -> near the end of the range, drop torque that pushes further out
     5 cap     -> |torque| <= max_torque
     6 rate limit -> torque changes at most max_rate Nm/s
 
 A fault skips 3-6 and cuts to 0 immediately (the exo is backdrivable: zero torque is safe).
-A normal stop (not walking, or disable()) just sets the target to 0; the rate limit then
-brings the torque down smoothly (2 Nm -> 0 in 0.1 s), so no separate fade-out is needed.
+A normal stop (not walking, or disable()) fades the torque to 0 over fade_s (bench 2026-11-18:
+gating straight to 0 gave a one-tick step, e.g. -0.2 -> 0 Nm; at 2 Nm that would be a jolt).
 """
 from dataclasses import dataclass, replace
 
@@ -29,8 +31,10 @@ import numpy as np
 class Limits:
     """Every safety number in one place. Units: Nm, s, deg, deg/s."""
     max_torque: float = 2.0         # hard ceiling (unworn friction ~0.7 Nm; motor could do ~8)
-    max_rate: float = 20.0          # Nm/s; 0 -> 2 Nm takes 0.1 s
-    soft_start_s: float = 2.0       # ramp-in once walking (and after every stop)
+    max_rate: float = 20.0          # Nm/s ceiling; make_leg_safety(peak_Nm=) scales it down
+    soft_start_s: float = 2.0       # ramp-in once walking (and after every full stop)
+    fade_s: float = 0.2             # fade-out when walking stops / disable(); also the ramp-back
+                                    # rate after a brief stop that never reached 0
     flex_limit: float = 70.0        # beyond this, no torque pushing further into flexion
     ext_limit: float = -20.0        # beyond this, no torque pushing further into extension
     fault_angle_margin: float = 30.0   # this far past a limit = fault (sensor or strap problem)
@@ -54,6 +58,7 @@ class Safety:
         self.enabled = False      # you turn it on (enable()); off at start
         self.fault = None         # None, or a short text saying why it latched off
         self.gain = 0.0           # 3 soft start: 0..1
+        self.ramping_in = True    # 3 True from a full stop until gain reaches 1 (slow ramp)
         self.last_torque = 0.0    # 6 rate limit: what we sent last tick
         self.last_angle = None    # 1 faults: to spot impossible jumps
 
@@ -72,6 +77,7 @@ class Safety:
         self.fault = None
         self.enabled = False
         self.gain = 0.0
+        self.ramping_in = True
         self.last_torque = 0.0
         self.last_angle = None
 
@@ -98,12 +104,21 @@ class Safety:
 
     # ---- 3. Soft start -----------------------------------------------------------------------
     def soft_start(self, allowed: bool) -> float:
-        """If allowed, raise self.gain toward 1 by dt / soft_start_s per tick; if not, set it to 0
-        (so every restart ramps in again). Returns the gain."""
+        """If allowed, raise self.gain toward 1: by dt / soft_start_s per tick after a full stop,
+        by dt / fade_s after a brief one (gain never hit 0). If not allowed, lower it toward 0 by
+        dt / fade_s per tick. Returns the gain."""
+        L = self.limits
         if allowed:
-            self.gain = min(1.0, self.gain + self.dt / self.limits.soft_start_s)
+            ramp = L.soft_start_s if self.ramping_in else L.fade_s
+            self.gain = self.gain + self.dt / ramp
+            if self.gain > 1.0 - 1e-9:
+                self.gain = 1.0
+                self.ramping_in = False
         else:
-            self.gain = 0.0
+            self.gain = self.gain - self.dt / L.fade_s
+            if self.gain < 1e-9:                    # snap: 1 - 10 x 0.1 is 2e-16 in floats
+                self.gain = 0.0
+                self.ramping_in = True
         return self.gain
 
     # ---- 4. Angle limits ---------------------------------------------------------------------
@@ -140,14 +155,29 @@ class Safety:
             self.gain, self.last_torque = 0.0, 0.0
             return 0.0                                  # instant cut, skips fade and rate limit
         allowed = self.enabled and walking
-        tau = self.gate(torque, walking) * self.soft_start(allowed)
+        tau = torque * self.soft_start(allowed)       # gate + soft start + fade in one gain
         tau = self.cap(self.angle_limit(tau, angle))
         tau = self.rate_limit(tau)
         self.last_torque = tau
         return tau
 
 
-def make_leg_safety(leg: str, dt: float = 0.02) -> Safety:
+RATE_PER_PEAK = 10.0   # 1/s. Natural torque-map slope tops out at ~6 x peak per second (Reznick
+                       # walks 11.9 Nm/s at 2 Nm; bench hand swings p99 ~3 Nm/s at 0.5 Nm), so 10 x
+                       # peak leaves ~1.7x headroom while smoothing phase jumps (bench 2026-11-18:
+                       # one-tick 0.2 Nm steps at 0.5 Nm passed the fixed 20 Nm/s limit untouched).
+
+
+def rate_for_peak(peak_Nm: float, ceiling: float = Limits.max_rate) -> float:
+    """Rate limit (Nm/s) for a torque map with this peak: RATE_PER_PEAK x peak, never above ceiling."""
+    return min(ceiling, RATE_PER_PEAK * peak_Nm)
+
+
+def make_leg_safety(leg: str, dt: float = 0.02, peak_Nm: float = None) -> Safety:
     """A Safety for "left" or "right", with its own copy of that leg's limits
-    (a copy, so changing one Safety's limits never changes LEG_LIMITS or another Safety)."""
-    return Safety(replace(LEG_LIMITS[leg]), dt)
+    (a copy, so changing one Safety's limits never changes LEG_LIMITS or another Safety).
+    peak_Nm: the torque map's peak; if given, max_rate scales with it (rate_for_peak)."""
+    limits = replace(LEG_LIMITS[leg])
+    if peak_Nm is not None:
+        limits.max_rate = rate_for_peak(peak_Nm, limits.max_rate)
+    return Safety(limits, dt)
