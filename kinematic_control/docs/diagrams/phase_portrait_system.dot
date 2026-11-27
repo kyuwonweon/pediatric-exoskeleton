@@ -1,0 +1,92 @@
+// Phase portrait controller: block diagram.
+// Render:  dot -Tpng -Gdpi=150 phase_portrait_system.dot -o phase_portrait_system.png
+digraph PhasePortraitSystem {
+    rankdir=TB;
+    newrank=true;
+    fontname="Helvetica"; fontsize=20;
+    label=<<b>Phase portrait gait-phase controller</b><br/><font point-size="13">one leg, runs every 20 ms (50 Hz); file names in grey</font>>;
+    labelloc=t;
+    node [shape=box, style="rounded,filled", fillcolor="#ffffff", fontname="Helvetica", fontsize=12, penwidth=1.2];
+    edge [fontname="Helvetica", fontsize=10, color="#444444"];
+
+    // ---------------- Offline ----------------
+    subgraph cluster_offline {
+        label=<<b>OFFLINE</b> (once, on the laptop)>; style="dashed,rounded"; color="#888888"; fontsize=13;
+        data   [label=<Reznick 2021 dataset<br/><font point-size="10">10 people, thigh angle + hip torque,<br/>true phase from force plates</font>>, shape=cylinder, fillcolor="#eeeeee"];
+        fitlu  [label=<fit_phase_lookup()<br/><font point-size="10" color="#777777">phase_portrait.py</font>>, fillcolor="#e8f0fb"];
+        fittq  [label=<fit torque model<br/><font point-size="10">Fourier in phase × poly(stride, incline)</font><br/><font point-size="10" color="#777777">torque_map.py</font>>, fillcolor="#e8f6e8"];
+        lookup [label=<phase lookup table<br/><font point-size="10">φ (circle angle) → gait phase</font><br/><font point-size="10" color="#777777">models/phase_lookup.json</font>>, shape=note, fillcolor="#e8f0fb"];
+        tqmod  [label=<torque model<br/><font point-size="10" color="#777777">models/torque_model.json</font>>, shape=note, fillcolor="#e8f6e8"];
+        data -> fitlu -> lookup;
+        data -> fittq -> tqmod;
+    }
+
+    // ---------------- Sensors ----------------
+    enc    [label=<motor encoder<br/><font point-size="10">board joint angle (deg)</font>>, shape=box, style="filled", fillcolor="#fff4d6"];
+    frame  [label=<LegFrame.hip_angle()<br/><font point-size="10">wrap(sign·(board − zero))<br/>zero = standing still, per session</font><br/><font point-size="10" color="#777777">frames.py</font>>, fillcolor="#fff4d6"];
+    imu    [label=<pelvis IMU pitch<br/><font point-size="10">(planned: thigh = hip + pelvis)</font>>, style="rounded,dashed,filled", fillcolor="#fff4d6"];
+    enc -> frame;
+    frame -> smooth [label="thigh angle θ\n(+ = flexion)"];
+    imu -> smooth [style=dashed];
+
+    // ---------------- Estimator ----------------
+    subgraph cluster_pp {
+        label=<<b>PhasePortrait.step()</b>  <font color="#777777">estimation/phase_portrait/phase_portrait.py</font>>;
+        style="rounded,filled"; fillcolor="#f4f8fd"; color="#4a7bc4"; fontsize=13;
+
+        smooth [label=<1 smooth<br/><font point-size="10">quadratic fit to last 6 angles<br/>→ θ, θ̇</font>>];
+        integ  [label=<integral<br/><font point-size="10">I += (θ − mean θ)·dt</font>>];
+        peaks  [label=<PeakDetector<br/><font point-size="10">thigh peak = end of stride<br/>(reversal threshold 25 % of swing)</font>>];
+        stats  [label=<RunningStats ×2<br/><font point-size="10">last stride's mean &amp; std<br/>of θ and of I</font>>];
+        norm   [label=<3 normalize<br/><font point-size="10">x = (θ − mean)/std<br/>y = (I − mean)/std  → circle</font>>];
+        atan   [label=<4 raw phase<br/><font point-size="10">φ = atan2(y, x)</font>>];
+        stop   [label=<5 stop check<br/><font point-size="10">angle stays in 12 % band for 0.4 s<br/>or no peak/valley for 1.5 s</font>>, fillcolor="#fde8e8"];
+        hold   [label=<6 hold<br/><font point-size="10">never backward,<br/>freeze while stopped</font>>];
+        conv   [label=<7 to_gait_phase<br/><font point-size="10">interpolate lookup<br/>0 = heel strike</font>>];
+
+        smooth -> integ [label="θ"];
+        smooth -> peaks [label="θ"];
+        smooth -> stats [label="θ"];
+        integ -> stats [label="I"];
+        peaks -> stats [label="freeze at\neach peak", style=dashed];
+        stats -> norm;
+        smooth -> norm [label="θ"];
+        integ -> norm [label="I"];
+        norm -> atan [label="(x, y)"];
+        atan -> hold [label="φ"];
+        smooth -> stop [label="θ"];
+        peaks -> stop [label="time since\nlast turn", style=dashed];
+        stop -> hold [label="stopped"];
+        hold -> conv [label="φ"];
+    }
+    lookup -> conv [style=dashed, color="#4a7bc4"];
+
+    // ---------------- Torque + safety ----------------
+    tmap [label=<TorqueMap.command()<br/><font point-size="10">phase → assist torque<br/>stride 1.25 m, incline 0, peak 2 Nm<br/>(+ lead_s to cancel known delay)</font><br/><font point-size="10" color="#777777">torque_map.py</font>>, fillcolor="#e8f6e8"];
+    tqmod -> tmap [style=dashed, color="#3a9a3a"];
+    conv -> tmap [label="gait phase\n0–1"];
+
+    subgraph cluster_safety {
+        label=<<b>Safety.step()</b>  <font color="#777777">safety.py (per-leg limits)</font>>;
+        style="rounded,filled"; fillcolor="#fdf2f2"; color="#c44a4a"; fontsize=13;
+        s1 [label=<1 faults<br/><font point-size="10">NaN, jump &gt; 15°/tick,<br/>&gt; 600°/s, far out of range<br/>→ latch OFF, instant 0</font>>];
+        s2 [label=<2 gate<br/><font point-size="10">0 unless enabled<br/>and walking</font>>];
+        s3 [label=<3 soft start<br/><font point-size="10">ramp 0→1 over 2 s</font>>];
+        s4 [label=<4 angle limits<br/><font point-size="10">no push past ROM<br/>L: −20…70°  R: −15…60°</font>>];
+        s5 [label=<5 cap<br/><font point-size="10">|τ| ≤ 2 Nm</font>>];
+        s6 [label=<6 rate limit<br/><font point-size="10">≤ 20 Nm/s</font>>];
+        s1 -> s2 -> s3 -> s4 -> s5 -> s6;
+    }
+    tmap -> s1 [label="τ desired"];
+    stop -> s2 [label="walking flag", style=dashed, color="#c44a4a"];
+    frame -> s1 [label="hip angle,\nvelocity", style=dashed, constraint=false];
+
+    // ---------------- Output ----------------
+    jt    [label=<LegFrame.joint_torque()<br/><font point-size="10">into board's joint frame</font>>, fillcolor="#fff4d6"];
+    board [label=<board: set_tau_offset()<br/><font point-size="10">K = B = 0 → offset = torque<br/>(applies joint_direction)</font>>, fillcolor="#fff4d6"];
+    drive [label=<Novanta drive<br/><font point-size="10">torque → current → voltage</font>>, fillcolor="#fff4d6"];
+    motor [label=<motor → hip>, shape=box, style="filled", fillcolor="#fff4d6"];
+    s6 -> jt [label="τ safe (Nm)"];
+    jt -> board -> drive -> motor;
+    motor -> enc [label="leg moves", style=dotted, constraint=false];
+}

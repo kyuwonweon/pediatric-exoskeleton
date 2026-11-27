@@ -1,0 +1,153 @@
+OW:
+  Fz_tresh: 10.0
+  thigh_tresh: 20.0
+  phases:
+    EarlyStance:
+      B: 0.1
+      K: 3.0
+      dt: 0.01
+      q_eq: 0.0
+      qdot_eq: 0.0
+    EarlySwing:
+      B: 0.1
+      K: 3.0
+      dt: 0.5
+      q_eq: 30.0
+      qdot_eq: 0.0
+    LateStance:
+      B: 0.1
+      K: 3.0
+      dt: 0.01
+      q_eq: 0.0
+      qdot_eq: 0.0
+    LateSwing:
+      B: 0.1
+      K: 3.0
+      dt: 0.5
+      q_eq: 0.0
+      qdot_eq: 0.0
+  vel_tresh: 10.0
+RampAsc:
+  Fz_tresh: 10.0
+  thigh_tresh: 20.0
+  phases:
+    EarlyStance:
+      B: 0.1
+      K: 3.0
+      dt: 0.1
+      q_eq: 0.0
+      qdot_eq: 0.0
+    EarlySwing:
+      B: 0.1
+      K: 3.0
+      dt: 0.5
+      q_eq: 50.0
+      qdot_eq: 0.0
+    LateStance:
+      B: 0.1
+      K: 3.0
+      dt: 0.1
+      q_eq: 0.0
+      qdot_eq: 0.0
+    LateSwing:
+      B: 0.1
+      K: 3.0
+      dt: 0.5
+      q_eq: 0.0
+      qdot_eq: 0.0
+  vel_tresh: 10.0
+RampDesc:
+  Fz_tresh: 10.0
+  thigh_tresh: 20.0
+  phases:
+    EarlyStance:
+      B: 0.1
+      K: 0.2
+      dt: 0.1
+      q_eq: 0.0
+      qdot_eq: 0.0
+    EarlySwing:
+      B: 0.1
+      K: 0.5
+      dt: 0.1
+      q_eq: 0.0
+      qdot_eq: 0.0
+    LateStance:
+      B: 0.1
+      K: 0.2
+      dt: 0.1
+      q_eq: 0.0
+      qdot_eq: 0.0
+    LateSwing:
+      B: 0.1
+      K: 0.5
+      dt: 0.1
+      q_eq: 0.0
+      qdot_eq: 0.0
+  vel_tresh: 10.0
+StairsAsc:
+  Fz_tresh: 10.0
+  thigh_tresh: 20.0
+  phases:
+    EarlyStance:
+      B: 0.1
+      K: 3.0
+      dt: 2.0
+      q_eq: 0.0
+      qdot_eq: 0.0
+    EarlySwing:
+      B: 0.1
+      K: 3.0
+      dt: 0.7
+      q_eq: 50.0
+      qdot_eq: 0.0
+    LateStance:
+      B: 0.1
+      K: 3.0
+      dt: 0.1
+      q_eq: 0.0
+      qdot_eq: 0.0
+    LateSwing:
+      B: 0.1
+      K: 3.0
+      dt: 0.1
+      q_eq: 50.0
+      qdot_eq: 0.0
+  vel_tresh: 10.0
+StairsDesc:
+  Fz_tresh: 10.0
+  # 2026-09-25: was implicitly 20.0 (shared OW default) -- real toe-off thigh
+  # angle during stairs descent is negative (median -2.9deg over 34 recorded
+  # cycles), so 20deg was reached in only 6% of cycles, starving the SM of
+  # its own EarlyStance exit trigger. -3deg reaches 88% within a bounded
+  # worst case (2.2s); see project_toeoff_classifier_bag_testing memory for
+  # the full candidate sweep and the hypothetical-SM-chain validation this
+  # value was checked against (75% of simulated cycles land within 500ms of
+  # an independent toe-off reference). NOT bench/hardware-verified yet.
+  thigh_tresh: -3.0
+  phases:
+    EarlyStance:
+      B: 0.1
+      K: 0.2
+      dt: 0.1
+      q_eq: 0.0
+      qdot_eq: 0.0
+    EarlySwing:
+      B: 0.1
+      K: 0.5
+      dt: 0.5
+      q_eq: 10.0
+      qdot_eq: 0.0
+    LateStance:
+      B: 0.1
+      K: 0.2
+      dt: 0.1
+      q_eq: 0.0
+      qdot_eq: 0.0
+    LateSwing:
+      B: 0.1
+      K: 0.5
+      dt: 0.5
+      q_eq: 0.0
+      qdot_eq: 0.0
+  vel_tresh: 10.0

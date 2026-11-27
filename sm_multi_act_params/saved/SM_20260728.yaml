@@ -1,0 +1,140 @@
+OW:
+  Fz_tresh: 10.0
+  phases:
+    EarlyStance:
+      B: 0.1
+      K: 3.0
+      dt: 0.01
+      q_eq: 0.0
+      qdot_eq: 0.0
+    EarlySwing:
+      B: 0.1
+      K: 3.0
+      dt: 2.0
+      q_eq: 50.0
+      qdot_eq: 0.0
+    LateStance:
+      B: 0.1
+      K: 3.0
+      dt: 0.01
+      q_eq: 0.0
+      qdot_eq: 0.0
+    LateSwing:
+      B: 0.1
+      K: 3.0
+      dt: 2.0
+      q_eq: 0.0
+      qdot_eq: 0.0
+  vel_tresh: 10.0
+RampAsc:
+  Fz_tresh: 10.0
+  phases:
+    EarlyStance:
+      B: 0.1
+      K: 1.0
+      dt: 1.0
+      q_eq: 0.0
+      qdot_eq: 0.0
+    EarlySwing:
+      B: 0.1
+      K: 1.0
+      dt: 2.0
+      q_eq: 50.0
+      qdot_eq: 0.0
+    LateStance:
+      B: 0.1
+      K: 1.0
+      dt: 1.0
+      q_eq: 0.0
+      qdot_eq: 0.0
+    LateSwing:
+      B: 0.1
+      K: 1.0
+      dt: 2.0
+      q_eq: 0.0
+      qdot_eq: 0.0
+  vel_tresh: 10.0
+RampDesc:
+  Fz_tresh: 10.0
+  phases:
+    EarlyStance:
+      B: 0.1
+      K: 1.0
+      dt: 1.0
+      q_eq: 0.0
+      qdot_eq: 0.0
+    EarlySwing:
+      B: 0.1
+      K: 1.0
+      dt: 2.0
+      q_eq: 50.0
+      qdot_eq: 0.0
+    LateStance:
+      B: 0.1
+      K: 1.0
+      dt: 1.0
+      q_eq: 0.0
+      qdot_eq: 0.0
+    LateSwing:
+      B: 0.1
+      K: 1.0
+      dt: 2.0
+      q_eq: 0.0
+      qdot_eq: 0.0
+  vel_tresh: 10.0
+StairsAsc:
+  Fz_tresh: 10.0
+  phases:
+    EarlyStance:
+      B: 0.1
+      K: 3.0
+      dt: 2.0
+      q_eq: 0.0
+      qdot_eq: 0.0
+    EarlySwing:
+      B: 0.1
+      K: 3.0
+      dt: 2.0
+      q_eq: 80.0
+      qdot_eq: 0.0
+    LateStance:
+      B: 0.1
+      K: 3.0
+      dt: 0.1
+      q_eq: 0.0
+      qdot_eq: 0.0
+    LateSwing:
+      B: 0.1
+      K: 3.0
+      dt: 0.1
+      q_eq: 80.0
+      qdot_eq: 0.0
+  vel_tresh: 10.0
+StairsDesc:
+  Fz_tresh: 10.0
+  phases:
+    EarlyStance:
+      B: 0.1
+      K: 1.0
+      dt: 1.0
+      q_eq: 0.0
+      qdot_eq: 0.0
+    EarlySwing:
+      B: 0.1
+      K: 1.0
+      dt: 2.0
+      q_eq: 50.0
+      qdot_eq: 0.0
+    LateStance:
+      B: 0.1
+      K: 1.0
+      dt: 1.0
+      q_eq: 0.0
+      qdot_eq: 0.0
+    LateSwing:
+      B: 0.1
+      K: 1.0
+      dt: 2.0
+      q_eq: 0.0
+      qdot_eq: 0.0
+  vel_tresh: 10.0

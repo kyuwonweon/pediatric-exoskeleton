@@ -1,0 +1,83 @@
+// EKF controller: block diagram.
+// Render:  dot -Tpng -Gdpi=150 ekf_system.dot -o ekf_system.png
+digraph EKFSystem {
+    rankdir=LR;
+    newrank=true;
+    fontname="Helvetica"; fontsize=20;
+    label=<<b>EKF gait-state controller</b><br/><font point-size="13">one leg, runs every 20 ms (50 Hz); state x = [phase, phase rate, stride length, incline]; file names in grey</font>>;
+    labelloc=t;
+    node [shape=box, style="rounded,filled", fillcolor="#ffffff", fontname="Helvetica", fontsize=12, penwidth=1.2];
+    edge [fontname="Helvetica", fontsize=10, color="#444444"];
+
+    // ---------------- Offline ----------------
+    subgraph cluster_offline {
+        label=<<b>OFFLINE</b> (once, on the laptop)>; style="dashed,rounded"; color="#888888"; fontsize=13;
+        data   [label=<Reznick 2021 dataset<br/><font point-size="10">10 people, 0.8–1.2 m/s, −10…+10°<br/>thigh angle + hip torque per stride</font>>, shape=cylinder, fillcolor="#eeeeee"];
+        fitgm  [label=<fit gait model (least squares)<br/><font point-size="10">thigh angle = Fourier in phase<br/>× poly(stride, incline)</font><br/><font point-size="10" color="#777777">gait_model.py</font>>, fillcolor="#e8f0fb"];
+        fittq  [label=<fit torque model<br/><font point-size="10">same basis, on hip torque</font><br/><font point-size="10" color="#777777">torque_map.py</font>>, fillcolor="#e8f6e8"];
+        gm     [label=<gait model h(x)<br/><font point-size="10">expected angle &amp; its slopes</font><br/><font point-size="10" color="#777777">models/gait_model.json</font>>, shape=note, fillcolor="#e8f0fb"];
+        tqmod  [label=<torque model<br/><font point-size="10" color="#777777">models/torque_model.json</font>>, shape=note, fillcolor="#e8f6e8"];
+        data -> fitgm -> gm;
+        data -> fittq -> tqmod;
+    }
+
+    // ---------------- Sensors ----------------
+    enc   [label=<motor encoder<br/><font point-size="10">board joint angle (deg)</font>>, style="filled", fillcolor="#fff4d6"];
+    frame [label=<LegFrame.hip_angle()<br/><font point-size="10">zero/sign per leg</font><br/><font point-size="10" color="#777777">frames.py</font>>, fillcolor="#fff4d6"];
+    imu   [label=<pelvis IMU pitch<br/><font point-size="10">(planned: thigh = hip + pelvis)</font>>, style="rounded,dashed,filled", fillcolor="#fff4d6"];
+    enc -> frame;
+    frame -> z [label="thigh angle"];
+    imu -> z [style=dashed];
+    z [label=<measurement z<br/><font point-size="10">[thigh angle, thigh velocity]</font>>, shape=box, style="filled", fillcolor="#fff4d6"];
+
+    // ---------------- EKF ----------------
+    subgraph cluster_ekf {
+        label=<<b>PhaseEKF.step()</b>  <font color="#777777">estimation/ekf/ekf.py</font>>;
+        style="rounded,filled"; fillcolor="#f4f8fd"; color="#4a7bc4"; fontsize=13;
+
+        init [label=<initialize() — once<br/><font point-size="10">grid search over states:<br/>pick x that best explains<br/>the first readings</font>>, style="rounded,dashed,filled", fillcolor="#ffffff"];
+        pred [label=<PREDICT<br/><font point-size="10">phase += rate·dt  (others stay)<br/>x⁻ = F x,   P⁻ = F P Fᵀ + Q</font>>, fillcolor="#e8f0fb"];
+        meas [label=<expected reading<br/><font point-size="10">ẑ = h(x⁻) = [model angle,<br/>model slope · rate]</font>>];
+        jac  [label=<Jacobian H<br/><font point-size="10">how ẑ changes with each state<br/>(analytic slopes of the model)</font>>];
+        innov [label=<innovation<br/><font point-size="10">y = z − ẑ</font>>, shape=circle, fixedsize=false];
+        gain [label=<Kalman gain<br/><font point-size="10">S = H P⁻ Hᵀ + R<br/>K = P⁻ Hᵀ S⁻¹</font>>];
+        upd  [label=<UPDATE<br/><font point-size="10">x = x⁻ + K y,  wrap phase,<br/>clip to realistic range<br/>P = (I − K H) P⁻</font>>, fillcolor="#e8f0fb"];
+        delay [label=<z⁻¹<br/><font point-size="10">next tick</font>>, shape=box, style="filled", fillcolor="#eeeeee"];
+        conf [label=<Mahalanobis yᵀ S⁻¹ y<br/><font point-size="10">"how surprised" — confidence</font>>, fillcolor="#fde8e8"];
+
+        init -> pred [style=dashed, label="x₀"];
+        pred -> meas [label="x⁻"];
+        pred -> jac [label="x⁻"];
+        meas -> innov [label="ẑ"];
+        jac -> gain [label="H"];
+        pred -> gain [label="P⁻", style=dashed];
+        gain -> upd [label="K"];
+        innov -> upd [label="y"];
+        innov -> conf [style=dashed];
+        upd -> delay [label="x, P"];
+        delay -> pred [label="x, P", constraint=false];
+    }
+    gm -> meas [style=dashed, color="#4a7bc4"];
+    gm -> jac [style=dashed, color="#4a7bc4"];
+    z -> innov [label="z"];
+    z -> init [style=dashed];
+
+    qr [label=<tuning<br/><font point-size="10">Q: how fast states may change<br/>R = diag(4.5°², 30°/s²): model-vs-person error</font><br/><font point-size="10" color="#777777">replay.py Q_DEFAULT, R_DEFAULT</font>>, shape=note, fillcolor="#f6f6f6"];
+    qr -> pred [style=dotted];
+    qr -> gain [style=dotted];
+
+    // ---------------- Torque + safety ----------------
+    tmap [label=<TorqueMap.command()<br/><font point-size="10">(phase + rate·lead_s, stride, incline)<br/>→ assist torque, peak 2 Nm<br/>grows uphill like a real hip</font><br/><font point-size="10" color="#777777">torque_map.py</font>>, fillcolor="#e8f6e8"];
+    tqmod -> tmap [style=dashed, color="#3a9a3a"];
+    upd -> tmap [label="phase, rate,\nstride, incline"];
+
+    safety [label=<Safety.step()<br/><font point-size="10">faults → gate → soft start →<br/>angle limits → cap 2 Nm → 20 Nm/s</font><br/><font point-size="10" color="#777777">safety.py</font>>, fillcolor="#fdf2f2", color="#c44a4a"];
+    tmap -> safety [label="τ desired"];
+    conf -> safety [label="walking / confidence\n(NOT wired yet: EKF has\nno stop detection)", style=dashed, color="#c44a4a", fontcolor="#c44a4a"];
+    frame -> safety [label="hip angle,\nvelocity", style=dashed, constraint=false];
+
+    // ---------------- Output ----------------
+    out [label=<LegFrame.joint_torque() → board set_tau_offset()<br/><font point-size="10">K = B = 0 → Novanta drive torque loop → motor → hip</font>>, fillcolor="#fff4d6"];
+    safety -> out [label="τ safe (Nm)"];
+    out -> enc [label="leg moves", style=dotted, constraint=false];
+}

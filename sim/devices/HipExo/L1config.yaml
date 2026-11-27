@@ -1,0 +1,45 @@
+device:
+  name: "HipExo_L1"
+  model_xml: "L1model.xml"
+  compatible_msk: ["myolegs22"]
+
+# Rigid grafts, same as Hippo_L1: each device body keeps its XML position as the offset from
+# its parent bone frame.
+attachments:
+  - device_body: "hipexo_frame"
+    parent_body: "pelvis"
+  - device_body: "hipexo_thigh_r"
+    parent_body: "femur_r"
+  - device_body: "hipexo_thigh_l"
+    parent_body: "femur_l"
+
+# Hip-flexion torque on the human joints. ctrl in [-1, 1], torque = 9 * ctrl N*m, the +/-9 N*m
+# ctrlrange of the validated bench model (exo_mujoco/exo_bench.xml; torque_scale 1.0 for both motors).
+# Positive = flexion. The motors' fitted damping, friction and armature are added to the hip joints by
+# the env from the training config's joint_dynamics_add (printed by build_device.py).
+# Names Exo_R / Exo_L so the mirror penalty pairs them (rl_train/train/policies/mirror.py).
+actuators:
+  - name: "Exo_R"
+    type: "general"
+    joint: "hip_flexion_r"
+    gaintype: "fixed"
+    gainprm: [9, 0, 0]
+    biastype: "none"
+    biasprm: [0, 0, 0]
+    dyntype: "none"
+    dynprm: [1, 0, 0]
+    ctrlrange: [-1, 1]
+    ctrllimited: true
+    gear: [1.0]
+  - name: "Exo_L"
+    type: "general"
+    joint: "hip_flexion_l"
+    gaintype: "fixed"
+    gainprm: [9, 0, 0]
+    biastype: "none"
+    biasprm: [0, 0, 0]
+    dyntype: "none"
+    dynprm: [1, 0, 0]
+    ctrlrange: [-1, 1]
+    ctrllimited: true
+    gear: [1.0]
